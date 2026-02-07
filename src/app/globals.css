@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bloom-bg: #0d1117;
+  --bloom-surface: #161b22;
+  --bloom-border: #30363d;
+  --bloom-muted: #8b949e;
+  --bloom-accent: #58a6ff;
+  --bloom-green: #3fb950;
+  --bloom-red: #f85149;
+  --bloom-amber: #d29922;
+}
+
+body {
+  @apply bg-bloom-bg text-white antialiased;
+  font-feature-settings: "rlig" 1, "calt" 1;
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bloom-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bloom-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--bloom-muted);
+}
+
+/* Range slider thumb for dark theme */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--bloom-accent);
+  cursor: pointer;
+  margin-top: -5px;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--bloom-accent);
+  cursor: pointer;
+  border: none;
+}
