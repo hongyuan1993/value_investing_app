@@ -1,57 +1,57 @@
-# DCF Value — Intrinsic Value Calculator
+# DCF 估值 — 内在价值计算器
 
-A web app to look up US stocks and estimate **intrinsic value** using the **Discounted Cash Flow (DCF)** method. Dark, dashboard-style UI inspired by Bloomberg/TradingView.
+基于 **现金流折现法（DCF）** 查询美股并估算 **内在价值** 的 Web 应用。深色仪表盘风格界面，参考 Bloomberg / TradingView。
 
-## Tech Stack
+## 技术栈
 
-- **Framework:** Next.js 15 (App Router)
-- **Styling:** Tailwind CSS, Lucide React
-- **Data:** Alpha Vantage (with free API key) or Yahoo Finance fallback
+- **框架：** Next.js 15（App Router）
+- **样式：** Tailwind CSS、Lucide React
+- **数据：** Alpha Vantage（需免费 API Key）或 Yahoo Finance 备用
 
-## Features
+## 功能
 
-- **Ticker search:** Enter a US symbol (e.g. AAPL, TSLA) to load quote and financials.
-- **Quote & stats:** Current price, market cap, P/E (TTM and forward), shares outstanding.
-- **DCF calculator:** Uses latest free cash flow (FCF), projects 5–10 years, terminal value, WACC and terminal growth.
-- **Adjustable inputs:** Sliders for growth rate, discount rate (WACC), terminal growth, and projection years; results update in real time.
-- **Valuation view:** Gauge/progress showing overvalued vs undervalued vs fair vs intrinsic value per share.
+- **股票代码搜索：** 输入美股代码（如 AAPL、TSLA）加载行情与财务数据。
+- **行情与指标：** 当前股价、市值、市盈率（TTM / 预期）、流通股数。
+- **DCF 计算：** 以最近年度自由现金流（FCF）为基础，预测 5–10 年、终值，结合 WACC 与永续增长率计算估值。
+- **可调参数：** 通过滑块调整 FCF 增长率、折现率（WACC）、永续增长率、预测年数，结果实时更新。
+- **估值展示：** 仪表条展示高估 / 合理 / 低估及每股内在价值。
 
-## Getting Started
+## 快速开始
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000), enter a ticker, and use the sliders to refine the DCF.
+浏览器打开 [http://localhost:3000](http://localhost:3000)，输入股票代码，并用滑块微调 DCF 参数。
 
-## Environment
+## 环境变量
 
-For **reliable quote and FCF data**, set an Alpha Vantage API key (free):
+为获得 **稳定的行情与 FCF 数据**，建议配置 Alpha Vantage API Key（免费）：
 
-1. Get a key at [Alpha Vantage — API Key](https://www.alphavantage.co/support/#api-key).
-2. Copy `.env.local.example` to `.env.local`.
-3. Add: `ALPHA_VANTAGE_API_KEY=your_key_here`
-4. Restart the dev server.
+1. 在 [Alpha Vantage — API Key](https://www.alphavantage.co/support/#api-key) 申请 Key。
+2. 将 `.env.local.example` 复制为 `.env.local`。
+3. 在 `.env.local` 中添加：`ALPHA_VANTAGE_API_KEY=你的key`
+4. 重启开发服务器。
 
-Without the key, the app falls back to Yahoo Finance; in many environments Yahoo returns no data and you will see **"Quote not found"**.
+未配置 Key 时，应用会回退到 Yahoo Finance；在很多环境下 Yahoo 可能无数据，会提示 **「未找到行情」**。
 
-## Data & Limits
+## 数据与限制
 
-- **With ALPHA_VANTAGE_API_KEY:** Quote (GLOBAL_QUOTE), company overview, and annual cash flow (for FCF) come from Alpha Vantage. Free tier has rate limits (e.g. 25 requests/day).
-- **Without key:** Yahoo Finance v7 quote + v10 quoteSummary are tried; they often require cookies and may fail.
-- Missing or invalid data (e.g. no FCF, no shares) is handled with clear messages.
+- **配置 ALPHA_VANTAGE_API_KEY 后：** 行情（GLOBAL_QUOTE）、公司概览与年度现金流（用于 FCF）来自 Alpha Vantage。免费档有请求限制（如每日 25 次）。
+- **未配置 Key：** 会尝试 Yahoo Finance v7 quote 与 v10 quoteSummary，可能因 Cookie 限制而失败。
+- 缺失或无效数据（如无 FCF、无股数）会以明确提示处理。
 
-## DCF Logic (brief)
+## DCF 计算逻辑（简述）
 
-1. Use the **latest annual FCF** as the base.
-2. Project FCF for the next **N years** (default 5) at the chosen **growth rate**.
-3. Discount each year’s FCF to present value using the **discount rate (WACC)**.
-4. Compute **terminal value** with perpetual growth and discount it to present value.
-5. **Enterprise value** = sum of PV of projected FCF + PV of terminal value.
-6. **Intrinsic value per share** = enterprise value / shares outstanding.
-7. Compare to current price to show over/undervaluation.
+1. 以 **最近年度 FCF** 为基准。
+2. 按设定的 **增长率** 预测未来 **N 年**（默认 5 年）的 FCF。
+3. 用 **折现率（WACC）** 将各年 FCF 折现到当前。
+4. 按 **永续增长率** 计算 **终值** 并折现到当前。
+5. **企业价值** = 预测期 FCF 现值之和 + 终值现值。
+6. **每股内在价值** = 企业价值 / 流通股数。
+7. 与当前股价对比，展示高估 / 合理 / 低估。
 
-## License
+## 许可证
 
 MIT
