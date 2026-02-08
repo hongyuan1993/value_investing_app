@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
+import Link from "next/link";
 import { TickerSearch } from "@/components/TickerSearch";
 import { QuoteCard } from "@/components/QuoteCard";
 import { DCFParams, type DCFParamValues } from "@/components/DCFParams";
@@ -82,6 +83,13 @@ export default function Home() {
     }
   }, []);
 
+  // 支持 URL ?symbol=XXX 自动分析
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const q = new URLSearchParams(window.location.search).get("symbol")?.trim().toUpperCase();
+    if (q) fetchTicker(q);
+  }, [fetchTicker]);
+
   const dcfResult = useMemo(() => {
     if (!data?.quote || !data?.fcfHistory?.length) return null;
     const latestFcf = data.fcfHistory[0]?.freeCashflow;
@@ -105,7 +113,15 @@ export default function Home() {
     <div className="min-h-screen bg-bloom-bg">
       <header className="border-b border-bloom-border bg-bloom-surface/80 backdrop-blur">
         <div className="max-w-5xl mx-auto px-4 py-4">
-          <h1 className="text-lg font-semibold text-white mb-4">DCF 内在价值</h1>
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-lg font-semibold text-white">DCF 内在价值</h1>
+            <Link
+              href="/saved"
+              className="text-sm text-bloom-muted hover:text-white transition-colors"
+            >
+              分析历史
+            </Link>
+          </div>
           <TickerSearch onSearch={fetchTicker} loading={loading} />
         </div>
       </header>

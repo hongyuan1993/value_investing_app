@@ -27,14 +27,26 @@ npm run dev
 
 ## 环境变量
 
-为获得 **稳定的行情与 FCF 数据**，建议配置 Alpha Vantage API Key（免费）：
+### Alpha Vantage（行情与 FCF，推荐）
 
 1. 在 [Alpha Vantage — API Key](https://www.alphavantage.co/support/#api-key) 申请 Key。
-2. 将 `.env.local.example` 复制为 `.env.local`。
-3. 在 `.env.local` 中添加：`ALPHA_VANTAGE_API_KEY=你的key`
-4. 重启开发服务器。
+2. 在 `.env.local` 中添加：`ALPHA_VANTAGE_API_KEY=你的key`
 
 未配置 Key 时，应用会回退到 Yahoo Finance；在很多环境下 Yahoo 可能无数据，会提示 **「未找到行情」**。
+
+### Supabase（分析结果缓存与历史）
+
+分析功能会优先从 Supabase 读取已缓存数据；若无则从网上抓取并自动保存。
+
+1. 在 [Supabase](https://supabase.com) 创建项目。
+2. 按 [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) 执行 SQL 建表。
+3. 在 `.env.local` 中添加：
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=你的Project URL
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=你的anon公钥
+   ```
+
+未配置 Supabase 时，分析仍会工作，但不会缓存，且「分析历史」页面不可用。
 
 ## 数据与限制
 

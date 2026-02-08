@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { TickerData, FCFEntry, StockQuote } from "@/lib/types";
+import { getSupabase, dbRowToTickerData, saveTickerToSupabase } from "@/lib/supabase";
 
 const FETCH_HEADERS = {
   "User-Agent":
@@ -322,6 +323,60 @@ function jsonResponse(body: { error?: string } | TickerData, status: number) {
   });
 }
 
+/** 从网上抓取股票数据（Alpha Vantage / Yahoo） */
+async function fetchTickerDataFromWeb(
+  ticker: string
+): Promise<TickerData | { error: string }> {
+  const alpha = await fetchFromAlphaVantage(ticker);
+  if (alpha.ok) {
+    const analyst5y = await fetchYahooAnalystGrowth5y(ticker);
+    const payload: TickerData = { quote: alpha.quote, fcfHistory: alpha.fcfHistory };
+    if (analyst5y != null) payload.analystGrowthRate5y = analyst5y;
+    if (alpha.suggestedWacc != null) payload.suggestedWacc = alpha.suggestedWacc;
+    if (alpha.waccSource) payload.waccSource = alpha.waccSource;
+    return payload;
+  }
+  if (alpha.error !== "no_key") {
+    return { error: alpha.error };
+  }
+
+  const [quoteRaw, summaryResult] = await Promise.all([
+    fetchQuote(ticker),
+    fetchQuoteSummary(ticker),
+  ]);
+
+  if (!quoteRaw) {
+    const hint =
+      " 请在 .env.local 中配置 ALPHA_VANTAGE_API_KEY（免费申请：https://www.alphavantage.co/support/#api-key），修改后需重启开发服务器。";
+    return { error: "未找到行情。" + hint };
+  }
+
+  const quote: StockQuote = toStockQuote(quoteRaw, ticker);
+  const sharesFromSummary = summaryResult?.defaultKeyStatistics?.sharesOutstanding;
+  if (sharesFromSummary != null && Number.isFinite(sharesFromSummary))
+    quote.sharesOutstanding = sharesFromSummary;
+
+  const cashflowStatements =
+    (summaryResult?.cashflowStatementHistory as { cashflowStatements?: Record<string, unknown>[] } | undefined)
+      ?.cashflowStatements ?? [];
+  const fcfHistory: FCFEntry[] = cashflowStatements
+    .map(toFCFEntry)
+    .filter((e) => e.freeCashflow != null && Number.isFinite(e.freeCashflow))
+    .sort((a, b) => b.date - a.date)
+    .slice(0, 10);
+
+  const analyst5y = await fetchYahooAnalystGrowth5y(ticker);
+  const beta = parseNum((summaryResult?.defaultKeyStatistics as { beta?: number } | undefined)?.beta);
+  const waccResult = suggestWacc(beta, undefined);
+  const payload: TickerData = { quote, fcfHistory };
+  if (analyst5y != null) payload.analystGrowthRate5y = analyst5y;
+  if (waccResult) {
+    payload.suggestedWacc = waccResult.wacc;
+    payload.waccSource = waccResult.source;
+  }
+  return payload;
+}
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ symbol: string }> }
@@ -333,59 +388,61 @@ export async function GET(
       return jsonResponse({ error: "缺少或无效的股票代码" }, 400);
     }
 
-    // Prefer Alpha Vantage when API key is set (reliable; no cookie required)
-    const alpha = await fetchFromAlphaVantage(ticker);
-    if (alpha.ok) {
-      const analyst5y = await fetchYahooAnalystGrowth5y(ticker);
-      const payload: TickerData = { quote: alpha.quote, fcfHistory: alpha.fcfHistory };
-      if (analyst5y != null) payload.analystGrowthRate5y = analyst5y;
-      if (alpha.suggestedWacc != null) payload.suggestedWacc = alpha.suggestedWacc;
-      if (alpha.waccSource) payload.waccSource = alpha.waccSource;
-      return jsonResponse(payload, 200);
-    }
-    const hasKey = !!process.env.ALPHA_VANTAGE_API_KEY?.trim();
-    if (alpha.error !== "no_key") {
-      return jsonResponse({ error: alpha.error }, 502);
-    }
-
-    // Fallback: Yahoo (may fail without cookie/crumb)
-    const [quoteRaw, summaryResult] = await Promise.all([
-      fetchQuote(ticker),
-      fetchQuoteSummary(ticker),
-    ]);
-
-    if (!quoteRaw) {
-      const hint =
-        " 请在 .env.local 中配置 ALPHA_VANTAGE_API_KEY（免费申请：https://www.alphavantage.co/support/#api-key），修改后需重启开发服务器。";
-      return jsonResponse({ error: "未找到行情。" + hint }, 404);
+    // 1. 先查 Supabase 是否有缓存
+    const sb = getSupabase();
+    if (sb) {
+      const { data: row, error } = await sb
+        .from("ticker_analyses")
+        .select("*")
+        .eq("symbol", ticker)
+        .single();
+      if (!error && row) {
+        const cached = dbRowToTickerData(row);
+        return jsonResponse(cached, 200);
+      }
     }
 
-    const quote: StockQuote = toStockQuote(quoteRaw, ticker);
-    const sharesFromSummary = summaryResult?.defaultKeyStatistics?.sharesOutstanding;
-    if (sharesFromSummary != null && Number.isFinite(sharesFromSummary))
-      quote.sharesOutstanding = sharesFromSummary;
-
-    const cashflowStatements =
-      (summaryResult?.cashflowStatementHistory as { cashflowStatements?: Record<string, unknown>[] } | undefined)
-        ?.cashflowStatements ?? [];
-    const fcfHistory: FCFEntry[] = cashflowStatements
-      .map(toFCFEntry)
-      .filter((e) => e.freeCashflow != null && Number.isFinite(e.freeCashflow))
-      .sort((a, b) => b.date - a.date)
-      .slice(0, 10);
-
-    const analyst5y = await fetchYahooAnalystGrowth5y(ticker);
-    const beta = parseNum((summaryResult?.defaultKeyStatistics as { beta?: number } | undefined)?.beta);
-    const waccResult = suggestWacc(beta, undefined);
-    const payload: TickerData = { quote, fcfHistory };
-    if (analyst5y != null) payload.analystGrowthRate5y = analyst5y;
-    if (waccResult) {
-      payload.suggestedWacc = waccResult.wacc;
-      payload.waccSource = waccResult.source;
+    // 2. 无缓存：从网上抓取
+    const result = await fetchTickerDataFromWeb(ticker);
+    if ("error" in result) {
+      return jsonResponse(result, result.error.includes("未找到") ? 404 : 502);
     }
-    return jsonResponse(payload, 200);
+
+    // 3. 抓取成功后保存到 Supabase
+    saveTickerToSupabase(ticker, result);
+
+    return jsonResponse(result, 200);
   } catch (err) {
     const message = err instanceof Error ? err.message : "未知错误";
     return jsonResponse({ error: "获取数据失败：" + message }, 502);
+  }
+}
+
+/** 刷新单只股票：重新从网上抓取并更新 Supabase */
+export async function POST(
+  _request: Request,
+  { params }: { params: Promise<{ symbol: string }> }
+) {
+  try {
+    const { symbol } = await params;
+    const ticker = (symbol ?? "").trim().toUpperCase();
+    if (!ticker) {
+      return jsonResponse({ error: "缺少或无效的股票代码" }, 400);
+    }
+
+    const result = await fetchTickerDataFromWeb(ticker);
+    if ("error" in result) {
+      return jsonResponse(result, result.error.includes("未找到") ? 404 : 502);
+    }
+
+    const ok = saveTickerToSupabase(ticker, result);
+    if (!ok) {
+      return jsonResponse({ error: "保存到数据库失败，请检查 Supabase 配置。" }, 502);
+    }
+
+    return jsonResponse(result, 200);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "未知错误";
+    return jsonResponse({ error: "更新数据失败：" + message }, 502);
   }
 }
