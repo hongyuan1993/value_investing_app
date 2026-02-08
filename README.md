@@ -48,6 +48,15 @@ npm run dev
 
 未配置 Supabase 时，分析仍会工作，但不会缓存，且「分析历史」页面不可用。
 
+### Gemini（DCF 参数专家意见）
+
+DCF 参数可基于 Gemini 大模型给出建议。
+
+1. 在 [Google AI Studio](https://aistudio.google.com/app/apikey) 申请 API Key。
+2. 在 `.env.local` 中添加：`GEMINI_API_KEY=你的key`
+
+未配置时，「获取专家意见」按钮不可用或会提示配置。
+
 ## 数据与限制
 
 - **配置 ALPHA_VANTAGE_API_KEY 后：** 行情（GLOBAL_QUOTE）、公司概览与年度现金流（用于 FCF）来自 Alpha Vantage。免费档有请求限制（如每日 25 次）。

@@ -8,7 +8,7 @@ import { DCFParams, type DCFParamValues } from "@/components/DCFParams";
 import { ValuationGauge } from "@/components/ValuationGauge";
 import { computeDCF, conservativeGrowthFromHistory } from "@/lib/dcf";
 import type { TickerData, FCFEntry } from "@/lib/types";
-import { AlertCircle, Loader2, Save } from "lucide-react";
+import { AlertCircle, Loader2, Save, Sparkles, Check } from "lucide-react";
 
 export default function Home() {
   const [symbol, setSymbol] = useState("");
@@ -144,6 +144,58 @@ export default function Home() {
     }
   }, [data, dcfResult, hasFCF, params, symbol]);
 
+  const [adviceLoading, setAdviceLoading] = useState(false);
+  const [advice, setAdvice] = useState<{
+    growthRate: number;
+    discountRate: number;
+    terminalGrowthRate: number;
+    projectionYears: number;
+    reasoning: string;
+  } | null>(null);
+  const [adviceError, setAdviceError] = useState<string | null>(null);
+
+  const fetchAdvice = useCallback(async () => {
+    if (!data || !hasFCF) return;
+    setAdviceLoading(true);
+    setAdviceError(null);
+    setAdvice(null);
+    try {
+      const res = await fetch("/api/dcf-advice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: data.quote.symbol ?? symbol,
+          quote: data.quote,
+          fcfHistory: data.fcfHistory,
+          analystGrowthRate5y: data.analystGrowthRate5y,
+          suggestedWacc: data.suggestedWacc,
+          waccSource: data.waccSource,
+          currentParams: params,
+        }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setAdvice(json);
+      } else {
+        setAdviceError(json?.error ?? "获取失败");
+      }
+    } catch (e) {
+      setAdviceError(e instanceof Error ? e.message : "网络错误");
+    } finally {
+      setAdviceLoading(false);
+    }
+  }, [data, hasFCF, params, symbol]);
+
+  const applyAdvice = useCallback(() => {
+    if (!advice) return;
+    setParams({
+      growthRate: advice.growthRate,
+      discountRate: advice.discountRate,
+      terminalGrowthRate: advice.terminalGrowthRate,
+      projectionYears: advice.projectionYears,
+    });
+  }, [advice]);
+
   return (
     <div className="min-h-screen bg-bloom-bg">
       <header className="border-b border-bloom-border bg-bloom-surface/80 backdrop-blur">
@@ -189,6 +241,44 @@ export default function Home() {
 
             {hasFCF && (
               <>
+                <div className="rounded-xl border border-bloom-border bg-bloom-surface p-5">
+                  <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-bloom-amber" />
+                    DCF 参数专家意见
+                  </h3>
+                  <p className="text-xs text-bloom-muted mb-3">由 Gemini 大模型根据公司数据给出参数建议，仅供参考。</p>
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      onClick={fetchAdvice}
+                      disabled={adviceLoading}
+                      className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium bg-bloom-amber/20 text-bloom-amber hover:bg-bloom-amber/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {adviceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      {adviceLoading ? "获取中…" : "获取专家意见"}
+                    </button>
+                    {advice && (
+                      <button
+                        onClick={applyAdvice}
+                        className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium bg-bloom-green/20 text-bloom-green hover:bg-bloom-green/30"
+                      >
+                        <Check className="h-4 w-4" />
+                        采用建议
+                      </button>
+                    )}
+                  </div>
+                  {adviceError && (
+                    <p className="mt-3 text-sm text-bloom-red">{adviceError}</p>
+                  )}
+                  {advice && (
+                    <div className="mt-4 space-y-2 text-sm">
+                      <p className="text-bloom-muted">{advice.reasoning}</p>
+                      <p className="text-bloom-muted">
+                        建议参数：增长率 {(advice.growthRate * 100).toFixed(1)}%，折现率 {(advice.discountRate * 100).toFixed(1)}%，永续增长率 {(advice.terminalGrowthRate * 100).toFixed(1)}%，预测 {advice.projectionYears} 年
+                      </p>
+                    </div>
+                  )}
+                </div>
+
                 <div className="grid md:grid-cols-2 gap-6">
                   <DCFParams
                     values={params}
