@@ -38,6 +38,11 @@ CREATE TABLE IF NOT EXISTS ticker_analyses (
   analyst_growth_rate_5y DOUBLE PRECISION,
   suggested_wacc DOUBLE PRECISION,
   wacc_source TEXT,
+  growth_rate DOUBLE PRECISION,
+  discount_rate DOUBLE PRECISION,
+  terminal_growth_rate DOUBLE PRECISION,
+  projection_years INTEGER,
+  intrinsic_value_per_share DOUBLE PRECISION,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -63,6 +68,16 @@ CREATE TRIGGER trigger_ticker_analyses_updated_at
 
 -- 使用 anon 公钥时需关闭 RLS，或添加策略允许访问（本表为个人缓存，无多租户需求）
 ALTER TABLE ticker_analyses DISABLE ROW LEVEL SECURITY;
+```
+
+### 若表已存在，需添加 DCF 参数与估值列（执行以下迁移 SQL）
+
+```sql
+ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS growth_rate DOUBLE PRECISION;
+ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS discount_rate DOUBLE PRECISION;
+ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS terminal_growth_rate DOUBLE PRECISION;
+ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS projection_years INTEGER;
+ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS intrinsic_value_per_share DOUBLE PRECISION;
 ```
 
 > **注意**：若触发器报错 `EXECUTE FUNCTION` 不存在，可改为 `EXECUTE PROCEDURE update_updated_at()`，或直接删除该触发器，应用层会自行更新 `updated_at`。

@@ -8,6 +8,8 @@ interface SavedRow {
   symbol: string;
   quote: { shortName?: string; regularMarketPrice?: number; currency?: string };
   fcf_history: unknown[];
+  projection_years: number | null;
+  intrinsic_value_per_share: number | null;
   updated_at: string;
   created_at: string;
 }
@@ -30,6 +32,19 @@ function formatPrice(n: number | undefined, currency?: string): string {
   if (n == null || !Number.isFinite(n)) return "—";
   const prefix = currency === "USD" ? "$" : "";
   return prefix + n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+/** 计算高估/低估百分比：(当前价 - 内在价值) / 内在价值 */
+function premiumPct(currentPrice: number | undefined, intrinsicValue: number | undefined): number | null {
+  if (
+    currentPrice == null ||
+    !Number.isFinite(currentPrice) ||
+    intrinsicValue == null ||
+    !Number.isFinite(intrinsicValue) ||
+    intrinsicValue <= 0
+  )
+    return null;
+  return (currentPrice - intrinsicValue) / intrinsicValue;
 }
 
 export default function SavedPage() {
@@ -136,7 +151,7 @@ export default function SavedPage() {
         {!loading && rows.length === 0 && !error && (
           <div className="text-center py-16 text-bloom-muted">
             <p>暂无已保存的分析结果。</p>
-            <p className="text-sm mt-2">在首页对股票执行「分析」后，结果会自动保存到此。</p>
+            <p className="text-sm mt-2">在首页对股票执行「分析」后，点击「保存分析」即可保存到此。</p>
             <Link href="/" className="inline-block mt-4 text-bloom-accent hover:underline">
               去分析 →
             </Link>
@@ -146,14 +161,17 @@ export default function SavedPage() {
         {!loading && rows.length > 0 && (
           <div className="space-y-3">
             <p className="text-bloom-muted text-sm">共 {rows.length} 只股票的分析记录</p>
-            <div className="rounded-xl border border-bloom-border overflow-hidden">
-              <table className="w-full text-left">
+            <div className="rounded-xl border border-bloom-border overflow-x-auto">
+              <table className="w-full text-left min-w-[800px]">
                 <thead className="bg-bloom-surface text-bloom-muted text-xs uppercase tracking-wider">
                   <tr>
                     <th className="px-4 py-3 font-medium">代码</th>
                     <th className="px-4 py-3 font-medium">名称</th>
                     <th className="px-4 py-3 font-medium">最新价</th>
-                    <th className="px-4 py-3 font-medium">FCF 年数</th>
+                    <th className="px-4 py-3 font-medium">内在价值</th>
+                    <th className="px-4 py-3 font-medium">估值</th>
+                    <th className="px-4 py-3 font-medium">历史 FCF</th>
+                    <th className="px-4 py-3 font-medium">预测年</th>
                     <th className="px-4 py-3 font-medium">更新时间</th>
                     <th className="px-4 py-3 font-medium text-right">操作</th>
                   </tr>
@@ -161,6 +179,25 @@ export default function SavedPage() {
                 <tbody>
                   {rows.map((r) => {
                     const fcfCount = Array.isArray(r.fcf_history) ? r.fcf_history.length : 0;
+                    const intrinsic = r.intrinsic_value_per_share;
+                    const current = r.quote?.regularMarketPrice;
+                    const pct = premiumPct(current, intrinsic ?? undefined);
+                    const valuationLabel =
+                      pct == null
+                        ? "—"
+                        : pct > 0.1
+                          ? "高估"
+                          : pct < -0.1
+                            ? "低估"
+                            : "合理";
+                    const valuationClass =
+                      pct == null
+                        ? "text-bloom-muted"
+                        : pct > 0.1
+                          ? "text-bloom-red"
+                          : pct < -0.1
+                            ? "text-bloom-green"
+                            : "text-bloom-amber";
                     const isUpdating = updating === r.symbol;
                     return (
                       <tr key={r.symbol} className="border-t border-bloom-border hover:bg-bloom-surface/50">
@@ -169,7 +206,19 @@ export default function SavedPage() {
                         <td className="px-4 py-3 font-mono text-white">
                           {formatPrice(r.quote?.regularMarketPrice, r.quote?.currency)}
                         </td>
+                        <td className="px-4 py-3 font-mono text-white">
+                          {intrinsic != null && Number.isFinite(intrinsic)
+                            ? formatPrice(intrinsic, r.quote?.currency)
+                            : "—"}
+                        </td>
+                        <td className={`px-4 py-3 font-medium ${valuationClass}`}>
+                          {valuationLabel}
+                          {pct != null && Number.isFinite(pct) ? ` (${(pct * 100 >= 0 ? "+" : "")}${(pct * 100).toFixed(1)}%)` : ""}
+                        </td>
                         <td className="px-4 py-3 text-bloom-muted">{fcfCount} 年</td>
+                        <td className="px-4 py-3 text-bloom-muted">
+                          {r.projection_years != null ? `${r.projection_years} 年` : "—"}
+                        </td>
                         <td className="px-4 py-3 text-bloom-muted text-sm">{formatDate(r.updated_at)}</td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-2">
@@ -200,7 +249,7 @@ export default function SavedPage() {
               </table>
             </div>
             <p className="text-bloom-muted text-xs mt-2">
-              「更新」会重新从网上抓取该股票最新数据并覆盖数据库中的记录。
+              「历史 FCF」= 财务数据中的 FCF 年数；「预测年」= DCF 模型中的预测年数。两者可不同。「更新」会重新从网上抓取该股票最新数据并覆盖数据库中的记录。估值需点击「保存分析」后才会显示。
             </p>
           </div>
         )}

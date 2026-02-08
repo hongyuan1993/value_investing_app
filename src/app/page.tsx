@@ -8,7 +8,7 @@ import { DCFParams, type DCFParamValues } from "@/components/DCFParams";
 import { ValuationGauge } from "@/components/ValuationGauge";
 import { computeDCF, conservativeGrowthFromHistory } from "@/lib/dcf";
 import type { TickerData, FCFEntry } from "@/lib/types";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle, Loader2, Save } from "lucide-react";
 
 export default function Home() {
   const [symbol, setSymbol] = useState("");
@@ -109,6 +109,41 @@ export default function Home() {
   const hasFCF = data?.fcfHistory?.length && data.fcfHistory.some((e) => e.freeCashflow != null && e.freeCashflow > 0);
   const noFCFWarning = data && !hasFCF;
 
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const handleSave = useCallback(async () => {
+    if (!data || !dcfResult || !hasFCF) return;
+    setSaving(true);
+    setSaved(false);
+    try {
+      const res = await fetch("/api/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: data.quote.symbol ?? symbol,
+          quote: data.quote,
+          fcfHistory: data.fcfHistory,
+          analystGrowthRate5y: data.analystGrowthRate5y,
+          suggestedWacc: data.suggestedWacc,
+          waccSource: data.waccSource,
+          growthRate: params.growthRate,
+          discountRate: params.discountRate,
+          terminalGrowthRate: params.terminalGrowthRate,
+          projectionYears: params.projectionYears,
+          intrinsicValuePerShare: dcfResult.intrinsicValuePerShare,
+          currentPrice: data.quote.regularMarketPrice ?? 0,
+        }),
+      });
+      const json = await res.json();
+      if (res.ok) setSaved(true);
+      else alert(json?.error ?? "保存失败");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  }, [data, dcfResult, hasFCF, params, symbol]);
+
   return (
     <div className="min-h-screen bg-bloom-bg">
       <header className="border-b border-bloom-border bg-bloom-surface/80 backdrop-blur">
@@ -162,11 +197,29 @@ export default function Home() {
                     growthRateSource={growthRateSource}
                     waccSource={data?.waccSource ?? null}
                   />
-                  <ValuationGauge
-                    currentPrice={data.quote.regularMarketPrice ?? 0}
-                    intrinsicValue={dcfResult?.intrinsicValuePerShare ?? 0}
-                    currency={data.quote.currency}
-                  />
+                  <div className="space-y-4">
+                    <ValuationGauge
+                      currentPrice={data.quote.regularMarketPrice ?? 0}
+                      intrinsicValue={dcfResult?.intrinsicValuePerShare ?? 0}
+                      currency={data.quote.currency}
+                    />
+                    <button
+                      onClick={handleSave}
+                      disabled={saving || !dcfResult}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-lg py-3 px-4 text-sm font-medium bg-bloom-accent/20 text-bloom-accent hover:bg-bloom-accent/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {saving ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : saved ? (
+                        "已保存"
+                      ) : (
+                        <>
+                          <Save className="h-4 w-4" />
+                          保存分析
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 {dcfResult && (

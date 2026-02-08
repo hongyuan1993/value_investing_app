@@ -16,6 +16,11 @@ export type DbRow = {
   analyst_growth_rate_5y: number | null;
   suggested_wacc: number | null;
   wacc_source: string | null;
+  growth_rate: number | null;
+  discount_rate: number | null;
+  terminal_growth_rate: number | null;
+  projection_years: number | null;
+  intrinsic_value_per_share: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -48,6 +53,48 @@ export async function saveTickerToSupabase(
   };
 
   const { error } = await sb.from("ticker_analyses").upsert(payload, {
+    onConflict: "symbol",
+  });
+  return !error;
+}
+
+export interface SaveAnalysisPayload {
+  symbol: string;
+  quote: TickerData["quote"];
+  fcfHistory: TickerData["fcfHistory"];
+  analystGrowthRate5y?: number;
+  suggestedWacc?: number;
+  waccSource?: string;
+  growthRate: number;
+  discountRate: number;
+  terminalGrowthRate: number;
+  projectionYears: number;
+  intrinsicValuePerShare: number;
+  currentPrice: number;
+}
+
+export async function saveAnalysisWithParams(
+  payload: SaveAnalysisPayload
+): Promise<boolean> {
+  const sb = getSupabase();
+  if (!sb) return false;
+
+  const row = {
+    symbol: payload.symbol.toUpperCase(),
+    quote: payload.quote,
+    fcf_history: payload.fcfHistory,
+    analyst_growth_rate_5y: payload.analystGrowthRate5y ?? null,
+    suggested_wacc: payload.suggestedWacc ?? null,
+    wacc_source: payload.waccSource ?? null,
+    growth_rate: payload.growthRate,
+    discount_rate: payload.discountRate,
+    terminal_growth_rate: payload.terminalGrowthRate,
+    projection_years: payload.projectionYears,
+    intrinsic_value_per_share: payload.intrinsicValuePerShare,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await sb.from("ticker_analyses").upsert(row, {
     onConflict: "symbol",
   });
   return !error;
