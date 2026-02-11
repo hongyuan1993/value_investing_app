@@ -6,6 +6,7 @@ import { TickerSearch } from "@/components/TickerSearch";
 import { QuoteCard } from "@/components/QuoteCard";
 import { DCFParams, type DCFParamValues } from "@/components/DCFParams";
 import { ValuationGauge } from "@/components/ValuationGauge";
+import { ValuationChart } from "@/components/ValuationChart";
 import { computeDCF, conservativeGrowthFromHistory } from "@/lib/dcf";
 import type { TickerData, FCFEntry } from "@/lib/types";
 import { AlertCircle, Loader2, Save, Sparkles, Check } from "lucide-react";
@@ -48,34 +49,43 @@ export default function Home() {
       }
       const tickerData = json as TickerData;
       setData(tickerData);
-      const fcfHistory = tickerData.fcfHistory ?? [];
-      const fcfValues = fcfHistory
-        .map((e: FCFEntry) => e.freeCashflow)
-        .filter((v): v is number => v != null && Number.isFinite(v));
-      // 1) 优先使用分析师 "Next 5 Years (per annum)" 增长率
-      // 2) 若无则用过去 3 年 FCF 平均增长率 × 0.8（保守）
-      let initialGrowth: number | null = null;
-      let sourceText: string | null = null;
-      if (tickerData.analystGrowthRate5y != null && Number.isFinite(tickerData.analystGrowthRate5y)) {
-        initialGrowth = tickerData.analystGrowthRate5y;
-        sourceText = `分析师 Next 5 Years (per annum) ${(tickerData.analystGrowthRate5y * 100).toFixed(1)}%`;
-      }
-      if (initialGrowth == null) {
-        initialGrowth = conservativeGrowthFromHistory(fcfValues, 3, 0.8);
-        if (initialGrowth != null) {
-          const cagr3y = initialGrowth / 0.8;
-          sourceText = `过去 3 年 FCF 年均增长率 ${(cagr3y * 100).toFixed(1)}% × 0.8 ≈ ${(initialGrowth * 100).toFixed(1)}%`;
+      const saved = tickerData.savedDcfParams;
+      if (saved && Number.isFinite(saved.growthRate) && Number.isFinite(saved.discountRate) && Number.isFinite(saved.terminalGrowthRate) && Number.isFinite(saved.projectionYears)) {
+        setGrowthRateSource("已保存的分析参数");
+        setParams({
+          growthRate: saved.growthRate,
+          discountRate: saved.discountRate,
+          terminalGrowthRate: saved.terminalGrowthRate,
+          projectionYears: saved.projectionYears,
+        });
+      } else {
+        const fcfHistory = tickerData.fcfHistory ?? [];
+        const fcfValues = fcfHistory
+          .map((e: FCFEntry) => e.freeCashflow)
+          .filter((v): v is number => v != null && Number.isFinite(v));
+        let initialGrowth: number | null = null;
+        let sourceText: string | null = null;
+        if (tickerData.analystGrowthRate5y != null && Number.isFinite(tickerData.analystGrowthRate5y)) {
+          initialGrowth = tickerData.analystGrowthRate5y;
+          sourceText = `分析师 Next 5 Years (per annum) ${(tickerData.analystGrowthRate5y * 100).toFixed(1)}%`;
         }
+        if (initialGrowth == null) {
+          initialGrowth = conservativeGrowthFromHistory(fcfValues, 3, 0.8);
+          if (initialGrowth != null) {
+            const cagr3y = initialGrowth / 0.8;
+            sourceText = `过去 3 年 FCF 年均增长率 ${(cagr3y * 100).toFixed(1)}% × 0.8 ≈ ${(initialGrowth * 100).toFixed(1)}%`;
+          }
+        }
+        if (initialGrowth == null) sourceText = "默认 10%";
+        setGrowthRateSource(sourceText);
+        const suggestedWacc = tickerData.suggestedWacc;
+        const hasWacc = suggestedWacc != null && Number.isFinite(suggestedWacc) && suggestedWacc >= 0.05 && suggestedWacc <= 0.25;
+        setParams((prev) => ({
+          ...prev,
+          growthRate: initialGrowth != null && initialGrowth > 0 ? initialGrowth : prev.growthRate,
+          discountRate: hasWacc ? suggestedWacc : prev.discountRate,
+        }));
       }
-      if (initialGrowth == null) sourceText = "默认 10%";
-      setGrowthRateSource(sourceText);
-      const suggestedWacc = tickerData.suggestedWacc;
-      const hasWacc = suggestedWacc != null && Number.isFinite(suggestedWacc) && suggestedWacc >= 0.05 && suggestedWacc <= 0.25;
-      setParams((prev) => ({
-        ...prev,
-        growthRate: initialGrowth != null && initialGrowth > 0 ? initialGrowth : prev.growthRate,
-        discountRate: hasWacc ? suggestedWacc : prev.discountRate,
-      }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "网络错误");
     } finally {
@@ -126,6 +136,7 @@ export default function Home() {
           analystGrowthRate5y: data.analystGrowthRate5y,
           suggestedWacc: data.suggestedWacc,
           waccSource: data.waccSource,
+          valuationMetrics: data.valuationMetrics,
           growthRate: params.growthRate,
           discountRate: params.discountRate,
           terminalGrowthRate: params.terminalGrowthRate,
@@ -202,12 +213,20 @@ export default function Home() {
         <div className="max-w-5xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-lg font-semibold text-white">DCF 内在价值</h1>
-            <Link
-              href="/saved"
-              className="text-sm text-bloom-muted hover:text-white transition-colors"
-            >
-              分析历史
-            </Link>
+            <div className="flex items-center gap-4">
+              <Link
+                href="/method"
+                className="text-sm text-bloom-muted hover:text-white transition-colors"
+              >
+                估值方法
+              </Link>
+              <Link
+                href="/saved"
+                className="text-sm text-bloom-muted hover:text-white transition-colors"
+              >
+                分析历史
+              </Link>
+            </div>
           </div>
           <TickerSearch onSearch={fetchTicker} loading={loading} />
         </div>
@@ -238,6 +257,15 @@ export default function Home() {
         {data && !loading && (
           <>
             <QuoteCard quote={data.quote} />
+
+            {data.valuationMetrics && data.valuationMetrics.length > 0 && (
+              <ValuationChart data={data.valuationMetrics} />
+            )}
+            {data && (!data.valuationMetrics || data.valuationMetrics.length === 0) && (
+              <p className="text-xs text-bloom-muted rounded-xl border border-bloom-border bg-bloom-surface/50 px-4 py-3">
+                暂无估值指标折线图（需使用 Alpha Vantage 抓取）。在「分析历史」中对该股票点击「更新」可重新抓取并显示 P/S、P/E、P/FCF 走势。
+              </p>
+            )}
 
             {hasFCF && (
               <>

@@ -12,6 +12,7 @@ export async function POST(request: Request) {
 
     const quote = body.quote;
     const fcfHistory = Array.isArray(body.fcfHistory) ? body.fcfHistory : [];
+    const valuationMetrics = Array.isArray(body.valuationMetrics) ? body.valuationMetrics : undefined;
     const growthRate = Number(body.growthRate);
     const discountRate = Number(body.discountRate);
     const terminalGrowthRate = Number(body.terminalGrowthRate);
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
       analystGrowthRate5y: body.analystGrowthRate5y,
       suggestedWacc: body.suggestedWacc,
       waccSource: body.waccSource,
+      valuationMetrics,
       growthRate,
       discountRate,
       terminalGrowthRate,

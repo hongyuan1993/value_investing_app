@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { TickerData, FCFEntry, StockQuote } from "@/lib/types";
+import type { TickerData, FCFEntry, StockQuote, ValuationMetricEntry } from "@/lib/types";
 import { getSupabase, dbRowToTickerData, saveTickerToSupabase } from "@/lib/supabase";
 
 const FETCH_HEADERS = {
@@ -60,13 +60,128 @@ function suggestWacc(beta: number | undefined, sector: string | undefined): { wa
 }
 
 type AlphaResult =
-  | { ok: true; quote: StockQuote; fcfHistory: FCFEntry[]; suggestedWacc?: number; waccSource?: string }
+  | { ok: true; quote: StockQuote; fcfHistory: FCFEntry[]; suggestedWacc?: number; waccSource?: string; valuationMetrics?: ValuationMetricEntry[] }
   | { ok: false; error: string };
 
 const ALPHA_DELAY_MS = 1300; // Free tier ~1 request/sec; stagger 3 calls to avoid rate limit
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** 从 Alpha Vantage 抓取过去 5 年 P/S、P/E (GAAP)、P/FCF，用于估值指标折线图 */
+async function fetchValuationMetricsAlpha(
+  symbol: string,
+  key: string,
+  sharesOutstanding: number,
+  cashflowAnnualReports: Record<string, unknown>[]
+): Promise<ValuationMetricEntry[]> {
+  const enc = encodeURIComponent(symbol);
+  const keyEnc = encodeURIComponent(key);
+  try {
+    const earningsRes = await fetch(
+      `${ALPHA_BASE}?function=EARNINGS&symbol=${enc}&apikey=${keyEnc}`,
+      { next: { revalidate: 3600 } }
+    );
+    const earningsText = await earningsRes.text();
+    await delay(ALPHA_DELAY_MS);
+    const incomeRes = await fetch(
+      `${ALPHA_BASE}?function=INCOME_STATEMENT&symbol=${enc}&apikey=${keyEnc}`,
+      { next: { revalidate: 3600 } }
+    );
+    const incomeText = await incomeRes.text();
+    await delay(ALPHA_DELAY_MS);
+    const tsRes = await fetch(
+      `${ALPHA_BASE}?function=TIME_SERIES_MONTHLY_ADJUSTED&symbol=${enc}&apikey=${keyEnc}`,
+      { next: { revalidate: 3600 } }
+    );
+    const tsText = await tsRes.text();
+
+    const earningsJson = earningsText.startsWith("{") ? (JSON.parse(earningsText) as Record<string, unknown>) : {};
+    const incomeJson = incomeText.startsWith("{") ? (JSON.parse(incomeText) as Record<string, unknown>) : {};
+    const tsJson = tsText.startsWith("{") ? (JSON.parse(tsText) as Record<string, unknown>) : {};
+
+    const earningsErr = earningsJson.Information ?? earningsJson.Note ?? earningsJson["Error Message"];
+    const incomeErr = incomeJson.Information ?? incomeJson.Note ?? incomeJson["Error Message"];
+    const tsErr = tsJson.Information ?? tsJson.Note ?? tsJson["Error Message"];
+
+    const annualEarnings =
+      earningsErr != null ? [] : (earningsJson.annualEarnings as { fiscalDateEnding?: string; reportedEPS?: string; reported_eps?: string }[] | undefined) ?? [];
+    const incomeAnnual =
+      incomeErr != null ? [] : (incomeJson.annualReports as Record<string, unknown>[] | undefined) ?? [];
+    const tsMonthlyRaw = tsErr != null ? {} : (tsJson["Monthly Adjusted Time Series"] ?? tsJson["Monthly adjusted time series"]) as Record<string, Record<string, string>> | undefined;
+    const tsMonthly = tsMonthlyRaw ?? {};
+
+    const fcfByYear: Record<number, number> = {};
+    for (const r of cashflowAnnualReports) {
+      const dateStr = (r.fiscalDateEnding ?? r.fiscal_date_ending) as string | undefined;
+      if (typeof dateStr !== "string" || dateStr.length < 4) continue;
+      const y = parseInt(dateStr.slice(0, 4), 10);
+      const op = parseNum(r.operatingCashflow ?? r.operating_cashflow);
+      const capEx = parseNum(r.capitalExpenditures ?? r.capital_expenditures);
+      const fcf = op != null && capEx != null ? op - Math.abs(capEx) : op ?? undefined;
+      if (fcf != null && Number.isFinite(fcf)) fcfByYear[y] = fcf;
+    }
+
+    const revenueByYear: Record<number, number> = {};
+    for (const r of incomeAnnual) {
+      const dateStr = (r.fiscalDateEnding ?? r.fiscal_date_ending) as string | undefined;
+      if (typeof dateStr !== "string" || dateStr.length < 4) continue;
+      const y = parseInt(dateStr.slice(0, 4), 10);
+      const rev = parseNum(r.totalRevenue ?? r.total_revenue);
+      if (rev != null && Number.isFinite(rev)) revenueByYear[y] = rev;
+    }
+
+    const epsByYear: Record<number, number> = {};
+    for (const e of annualEarnings) {
+      const dateStr = e.fiscalDateEnding;
+      if (typeof dateStr !== "string" || dateStr.length < 4) continue;
+      const y = parseInt(dateStr.slice(0, 4), 10);
+      const eps = parseNum(e.reportedEPS ?? (e as { reported_eps?: unknown }).reported_eps);
+      if (eps != null && Number.isFinite(eps)) epsByYear[y] = eps;
+    }
+
+    const monthlyPrices: { year: number; month: number; date: string; close: number }[] = [];
+    for (const [dateStr, o] of Object.entries(tsMonthly)) {
+      if (typeof dateStr !== "string" || dateStr.length < 7 || !o || typeof o !== "object") continue;
+      const parts = dateStr.split("-");
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) continue;
+      const close = parseNum(
+        o["5. adjusted close"] ?? o["4. close"] ?? (o as Record<string, unknown>)["5. adjusted close"] ?? (o as Record<string, unknown>)["4. close"]
+      );
+      if (close != null && Number.isFinite(close)) monthlyPrices.push({ year: y, month: m, date: dateStr, close });
+    }
+    monthlyPrices.sort((a, b) => (a.year !== b.year ? a.year - b.year : a.month - b.month));
+    const fiveYearsAgo = new Date().getFullYear() - 5;
+    const fromIndex = monthlyPrices.findIndex((p) => p.year >= fiveYearsAgo && (p.year > fiveYearsAgo || p.month >= 1));
+    const slice = fromIndex < 0 ? monthlyPrices : monthlyPrices.slice(fromIndex);
+    const last60 = slice.slice(-60);
+
+    if (last60.length === 0 || !sharesOutstanding || sharesOutstanding <= 0) return [];
+
+    const entries: ValuationMetricEntry[] = last60.map(({ year, month, close }) => {
+      const revenue = revenueByYear[year];
+      const eps = epsByYear[year];
+      const fcf = fcfByYear[year];
+      const marketCap = close * sharesOutstanding;
+      const ps = revenue != null && revenue > 0 ? marketCap / revenue : null;
+      const peGaap = eps != null && eps > 0 ? close / eps : null;
+      const pfcf = fcf != null && fcf > 0 ? marketCap / fcf : null;
+      return {
+        year,
+        month,
+        ps: ps != null && Number.isFinite(ps) ? ps : null,
+        peGaap: peGaap != null && Number.isFinite(peGaap) ? peGaap : null,
+        pfcf: pfcf != null && Number.isFinite(pfcf) ? pfcf : null,
+      };
+    });
+
+    return entries;
+  } catch {
+    return [];
+  }
 }
 
 /** Fetch quote + overview + cash flow from Alpha Vantage. Requests are sequential with delay to respect rate limit. */
@@ -166,11 +281,18 @@ async function fetchFromAlphaVantage(symbol: string): Promise<AlphaResult> {
     const beta = parseNum(overview.Beta);
     const sector = (overview.Sector as string) ?? undefined;
     const waccResult = suggestWacc(beta, sector);
+    const valuationMetrics = await fetchValuationMetricsAlpha(
+      symbol,
+      key,
+      sharesOutstanding ?? 0,
+      annualReports
+    );
     const result: AlphaResult = {
       ok: true,
       quote,
       fcfHistory,
       ...(waccResult && { suggestedWacc: waccResult.wacc, waccSource: waccResult.source }),
+      ...(valuationMetrics.length > 0 && { valuationMetrics }),
     };
     return result;
   } catch (e) {
@@ -334,6 +456,7 @@ async function fetchTickerDataFromWeb(
     if (analyst5y != null) payload.analystGrowthRate5y = analyst5y;
     if (alpha.suggestedWacc != null) payload.suggestedWacc = alpha.suggestedWacc;
     if (alpha.waccSource) payload.waccSource = alpha.waccSource;
+    if (alpha.valuationMetrics?.length) payload.valuationMetrics = alpha.valuationMetrics;
     return payload;
   }
   if (alpha.error !== "no_key") {
@@ -388,7 +511,7 @@ export async function GET(
       return jsonResponse({ error: "缺少或无效的股票代码" }, 400);
     }
 
-    // 1. 先查 Supabase 是否有缓存
+    // 1. 分析历史：有缓存则仅从数据库返回（估值指标不在此处抓取，仅分析股票时抓取）
     const sb = getSupabase();
     if (sb) {
       const { data: row, error } = await sb

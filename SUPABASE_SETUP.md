@@ -38,11 +38,13 @@ CREATE TABLE IF NOT EXISTS ticker_analyses (
   analyst_growth_rate_5y DOUBLE PRECISION,
   suggested_wacc DOUBLE PRECISION,
   wacc_source TEXT,
+  valuation_metrics JSONB,
   growth_rate DOUBLE PRECISION,
   discount_rate DOUBLE PRECISION,
   terminal_growth_rate DOUBLE PRECISION,
   projection_years INTEGER,
   intrinsic_value_per_share DOUBLE PRECISION,
+  current_price DOUBLE PRECISION,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -78,6 +80,8 @@ ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS discount_rate DOUBLE PRECIS
 ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS terminal_growth_rate DOUBLE PRECISION;
 ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS projection_years INTEGER;
 ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS intrinsic_value_per_share DOUBLE PRECISION;
+ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS current_price DOUBLE PRECISION;
+ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS valuation_metrics JSONB;
 ```
 
 > **注意**：若触发器报错 `EXECUTE FUNCTION` 不存在，可改为 `EXECUTE PROCEDURE update_updated_at()`，或直接删除该触发器，应用层会自行更新 `updated_at`。

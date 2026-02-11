@@ -122,13 +122,18 @@ export default function SavedPage() {
               <History className="h-5 w-5 text-bloom-accent" />
               分析历史
             </h1>
-            <Link
-              href="/"
-              className="flex items-center gap-2 text-bloom-muted hover:text-white transition-colors text-sm"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              返回首页
-            </Link>
+            <div className="flex items-center gap-4">
+              <Link href="/method" className="text-sm text-bloom-muted hover:text-white transition-colors">
+                估值方法
+              </Link>
+              <Link
+                href="/"
+                className="flex items-center gap-2 text-bloom-muted hover:text-white transition-colors text-sm"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                返回首页
+              </Link>
+            </div>
           </div>
         </div>
       </header>
@@ -161,24 +166,22 @@ export default function SavedPage() {
         {!loading && rows.length > 0 && (
           <div className="space-y-3">
             <p className="text-bloom-muted text-sm">共 {rows.length} 只股票的分析记录</p>
-            <div className="rounded-xl border border-bloom-border overflow-x-auto">
-              <table className="w-full text-left min-w-[800px]">
-                <thead className="bg-bloom-surface text-bloom-muted text-xs uppercase tracking-wider">
+            <div className="rounded-xl border border-bloom-border overflow-x-auto -mx-1 px-1">
+              <table className="w-full text-left min-w-[640px] text-xs sm:text-sm">
+                <thead className="bg-bloom-surface text-bloom-muted text-[10px] sm:text-xs uppercase tracking-wider">
                   <tr>
-                    <th className="px-4 py-3 font-medium">代码</th>
-                    <th className="px-4 py-3 font-medium">名称</th>
-                    <th className="px-4 py-3 font-medium">最新价</th>
-                    <th className="px-4 py-3 font-medium">内在价值</th>
-                    <th className="px-4 py-3 font-medium">估值</th>
-                    <th className="px-4 py-3 font-medium">历史 FCF</th>
-                    <th className="px-4 py-3 font-medium">预测年</th>
-                    <th className="px-4 py-3 font-medium">更新时间</th>
-                    <th className="px-4 py-3 font-medium text-right">操作</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3 font-medium w-0"> </th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3 font-medium">代码</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3 font-medium">名称</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3 font-medium">最新价</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3 font-medium">内在价值</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3 font-medium">估值</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3 font-medium">更新时间</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3 font-medium text-right">操作</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="text-xs sm:text-sm">
                   {rows.map((r) => {
-                    const fcfCount = Array.isArray(r.fcf_history) ? r.fcf_history.length : 0;
                     const intrinsic = r.intrinsic_value_per_share;
                     const current = r.quote?.regularMarketPrice;
                     const pct = premiumPct(current, intrinsic ?? undefined);
@@ -201,46 +204,42 @@ export default function SavedPage() {
                     const isUpdating = updating === r.symbol;
                     return (
                       <tr key={r.symbol} className="border-t border-bloom-border hover:bg-bloom-surface/50">
-                        <td className="px-4 py-3 font-mono font-medium text-white">{r.symbol}</td>
-                        <td className="px-4 py-3 text-white">{r.quote?.shortName ?? "—"}</td>
-                        <td className="px-4 py-3 font-mono text-white">
+                        <td className="px-2 py-2 sm:px-4 sm:py-3 align-middle w-0">
+                          <Link
+                            href={`/?symbol=${encodeURIComponent(r.symbol)}`}
+                            className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] sm:min-h-[40px] sm:min-w-[40px] rounded-lg bg-bloom-accent text-bloom-bg font-medium text-sm hover:opacity-90 active:opacity-80"
+                          >
+                            查看
+                          </Link>
+                        </td>
+                        <td className="px-2 py-2 sm:px-4 sm:py-3 font-mono font-medium text-white">{r.symbol}</td>
+                        <td className="px-2 py-2 sm:px-4 sm:py-3 text-white max-w-[4rem] sm:max-w-none truncate" title={r.quote?.shortName ?? undefined}>{r.quote?.shortName ?? "—"}</td>
+                        <td className="px-2 py-2 sm:px-4 sm:py-3 font-mono text-white">
                           {formatPrice(r.quote?.regularMarketPrice, r.quote?.currency)}
                         </td>
-                        <td className="px-4 py-3 font-mono text-white">
+                        <td className="px-2 py-2 sm:px-4 sm:py-3 font-mono text-white">
                           {intrinsic != null && Number.isFinite(intrinsic)
                             ? formatPrice(intrinsic, r.quote?.currency)
                             : "—"}
                         </td>
-                        <td className={`px-4 py-3 font-medium ${valuationClass}`}>
+                        <td className={`px-2 py-2 sm:px-4 sm:py-3 font-medium ${valuationClass}`}>
                           {valuationLabel}
                           {pct != null && Number.isFinite(pct) ? ` (${(pct * 100 >= 0 ? "+" : "")}${(pct * 100).toFixed(1)}%)` : ""}
                         </td>
-                        <td className="px-4 py-3 text-bloom-muted">{fcfCount} 年</td>
-                        <td className="px-4 py-3 text-bloom-muted">
-                          {r.projection_years != null ? `${r.projection_years} 年` : "—"}
-                        </td>
-                        <td className="px-4 py-3 text-bloom-muted text-sm">{formatDate(r.updated_at)}</td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Link
-                              href={`/?symbol=${encodeURIComponent(r.symbol)}`}
-                              className="text-bloom-accent hover:underline text-sm"
-                            >
-                              查看
-                            </Link>
-                            <button
-                              onClick={() => handleUpdate(r.symbol)}
-                              disabled={isUpdating}
-                              className="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium bg-bloom-accent/20 text-bloom-accent hover:bg-bloom-accent/30 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              {isUpdating ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <RefreshCw className="h-3.5 w-3.5" />
-                              )}
-                              更新
-                            </button>
-                          </div>
+                        <td className="px-2 py-2 sm:px-4 sm:py-3 text-bloom-muted whitespace-nowrap">{formatDate(r.updated_at)}</td>
+                        <td className="px-2 py-2 sm:px-4 sm:py-3 text-right align-middle">
+                          <button
+                            onClick={() => handleUpdate(r.symbol)}
+                            disabled={isUpdating}
+                            className="inline-flex items-center justify-center gap-1 min-h-[44px] min-w-[44px] sm:min-h-[40px] sm:min-w-[40px] rounded-lg px-2 sm:px-3 text-xs sm:text-sm font-medium bg-bloom-accent/20 text-bloom-accent hover:bg-bloom-accent/30 disabled:opacity-50 disabled:cursor-not-allowed active:opacity-80"
+                          >
+                            {isUpdating ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            )}
+                            更新
+                          </button>
                         </td>
                       </tr>
                     );
@@ -249,7 +248,7 @@ export default function SavedPage() {
               </table>
             </div>
             <p className="text-bloom-muted text-xs mt-2">
-              「历史 FCF」= 财务数据中的 FCF 年数；「预测年」= DCF 模型中的预测年数。两者可不同。「更新」会重新从网上抓取该股票最新数据并覆盖数据库中的记录。估值需点击「保存分析」后才会显示。
+              「更新」会重新从网上抓取该股票最新数据并覆盖数据库中的记录。估值需点击「保存分析」后才会显示。
             </p>
           </div>
         )}
