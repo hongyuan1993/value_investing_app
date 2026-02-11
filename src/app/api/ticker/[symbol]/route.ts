@@ -175,6 +175,7 @@ async function fetchValuationMetricsAlpha(
         ps: ps != null && Number.isFinite(ps) ? ps : null,
         peGaap: peGaap != null && Number.isFinite(peGaap) ? peGaap : null,
         pfcf: pfcf != null && Number.isFinite(pfcf) ? pfcf : null,
+        price: close,
       };
     });
 
@@ -501,7 +502,7 @@ async function fetchTickerDataFromWeb(
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ symbol: string }> }
 ) {
   try {
@@ -511,7 +512,9 @@ export async function GET(
       return jsonResponse({ error: "缺少或无效的股票代码" }, 400);
     }
 
-    // 1. 分析历史：有缓存则仅从数据库返回（估值指标不在此处抓取，仅分析股票时抓取）
+    const url = new URL(request.url);
+    const cacheOnly = url.searchParams.get("cacheOnly") === "1";
+
     const sb = getSupabase();
     if (sb) {
       const { data: row, error } = await sb
@@ -519,21 +522,33 @@ export async function GET(
         .select("*")
         .eq("symbol", ticker)
         .single();
+
       if (!error && row) {
-        const cached = dbRowToTickerData(row);
-        return jsonResponse(cached, 200);
+        if (cacheOnly) {
+          const cached = dbRowToTickerData(row);
+          return jsonResponse(cached, 200);
+        }
+        const rawMetrics = row?.valuation_metrics;
+        const hasValuationMetrics = rawMetrics != null && Array.isArray(rawMetrics) && rawMetrics.length > 0;
+        const hasAnyPrice = hasValuationMetrics && (rawMetrics as { price?: number }[]).some((e) => e?.price != null && Number.isFinite(e.price));
+        const useCache = !hasValuationMetrics || hasAnyPrice;
+        if (useCache) {
+          const cached = dbRowToTickerData(row);
+          return jsonResponse(cached, 200);
+        }
+      }
+
+      if (cacheOnly) {
+        return jsonResponse({ error: "无该股票的缓存数据，请先在首页分析该股票或在分析历史中点击「更新」。" }, 404);
       }
     }
 
-    // 2. 无缓存：从网上抓取
     const result = await fetchTickerDataFromWeb(ticker);
     if ("error" in result) {
       return jsonResponse(result, result.error.includes("未找到") ? 404 : 502);
     }
 
-    // 3. 抓取成功后保存到 Supabase
     saveTickerToSupabase(ticker, result);
-
     return jsonResponse(result, 200);
   } catch (err) {
     const message = err instanceof Error ? err.message : "未知错误";

@@ -21,7 +21,7 @@ export interface FCFEntry {
   capitalExpenditure?: number;
 }
 
-/** 单年或单月估值指标：P/S、P/E (GAAP)、P/FCF */
+/** 单年或单月估值指标：P/S、P/E (GAAP)、P/FCF，可选当月收盘价用于折线图 */
 export interface ValuationMetricEntry {
   year: number;
   /** 月份 1–12，无则表示整年一点（兼容旧数据） */
@@ -32,6 +32,8 @@ export interface ValuationMetricEntry {
   peGaap: number | null;
   /** 市现率 Price to FCF */
   pfcf: number | null;
+  /** 当月/当年收盘价（用于折线图股价走势，右轴） */
+  price?: number | null;
 }
 
 /** 保存分析时写入的 DCF 参数（用于回显与对比） */

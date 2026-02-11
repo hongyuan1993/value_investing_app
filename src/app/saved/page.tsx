@@ -206,7 +206,7 @@ export default function SavedPage() {
                       <tr key={r.symbol} className="border-t border-bloom-border hover:bg-bloom-surface/50">
                         <td className="px-2 py-2 sm:px-4 sm:py-3 align-middle w-0">
                           <Link
-                            href={`/?symbol=${encodeURIComponent(r.symbol)}`}
+                            href={`/?symbol=${encodeURIComponent(r.symbol)}&cacheOnly=1`}
                             className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] sm:min-h-[40px] sm:min-w-[40px] rounded-lg bg-bloom-accent text-bloom-bg font-medium text-sm hover:opacity-90 active:opacity-80"
                           >
                             查看

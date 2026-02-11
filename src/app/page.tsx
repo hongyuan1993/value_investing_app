@@ -26,14 +26,15 @@ export default function Home() {
   /** FCF 增长率初值来源说明（用于在分析结果中展示计算过程） */
   const [growthRateSource, setGrowthRateSource] = useState<string | null>(null);
 
-  const fetchTicker = useCallback(async (s: string) => {
+  const fetchTicker = useCallback(async (s: string, cacheOnly?: boolean) => {
     setSymbol(s);
     setLoading(true);
     setError(null);
     setData(null);
     setGrowthRateSource(null);
     try {
-      const res = await fetch(`/api/ticker/${encodeURIComponent(s)}`);
+      const url = `/api/ticker/${encodeURIComponent(s)}${cacheOnly ? "?cacheOnly=1" : ""}`;
+      const res = await fetch(url);
       const text = await res.text();
       let json: unknown;
       try {
@@ -93,11 +94,13 @@ export default function Home() {
     }
   }, []);
 
-  // 支持 URL ?symbol=XXX 自动分析
+  // 支持 URL ?symbol=XXX 自动分析；?cacheOnly=1 时仅从数据库取数（来自分析历史「查看」）
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const q = new URLSearchParams(window.location.search).get("symbol")?.trim().toUpperCase();
-    if (q) fetchTicker(q);
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get("symbol")?.trim().toUpperCase();
+    const cacheOnly = params.get("cacheOnly") === "1";
+    if (q) fetchTicker(q, cacheOnly);
   }, [fetchTicker]);
 
   const dcfResult = useMemo(() => {

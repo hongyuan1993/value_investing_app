@@ -27,6 +27,7 @@ export function ValuationChart({ data }: ValuationChartProps) {
   if (!data?.length) return null;
 
   const isMonthly = data.some((d) => d.month != null);
+
   const chartData = data.map((d) => {
     const xLabel = d.month != null ? `${d.year}-${String(d.month).padStart(2, "0")}` : String(d.year);
     return {
@@ -90,7 +91,8 @@ export function ValuationChart({ data }: ValuationChartProps) {
               dataKey="P/S"
               stroke="var(--bloom-accent)"
               strokeWidth={2}
-              dot={{ fill: "var(--bloom-accent)", r: 4 }}
+              dot={{ fill: "var(--bloom-accent)", r: 1.5 }}
+              activeDot={{ r: 3 }}
               connectNulls
             />
             <Line
@@ -98,7 +100,8 @@ export function ValuationChart({ data }: ValuationChartProps) {
               dataKey="P/E (GAAP)"
               stroke="var(--bloom-green)"
               strokeWidth={2}
-              dot={{ fill: "var(--bloom-green)", r: 4 }}
+              dot={{ fill: "var(--bloom-green)", r: 1.5 }}
+              activeDot={{ r: 3 }}
               connectNulls
             />
             <Line
@@ -106,7 +109,8 @@ export function ValuationChart({ data }: ValuationChartProps) {
               dataKey="P/FCF"
               stroke="var(--bloom-amber)"
               strokeWidth={2}
-              dot={{ fill: "var(--bloom-amber)", r: 4 }}
+              dot={{ fill: "var(--bloom-amber)", r: 1.5 }}
+              activeDot={{ r: 3 }}
               connectNulls
             />
           </LineChart>

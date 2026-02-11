@@ -72,19 +72,24 @@ CREATE TRIGGER trigger_ticker_analyses_updated_at
 ALTER TABLE ticker_analyses DISABLE ROW LEVEL SECURITY;
 ```
 
-### 若表已存在，需添加 DCF 参数与估值列（执行以下迁移 SQL）
+### 若表已存在或「无法更新数据库」：执行下方一次性迁移
+
+在 Supabase 左侧 **SQL Editor** 中新建查询，粘贴并**运行**下面整段 SQL（会补全当前应用需要的所有列，已存在的列不会报错）：
 
 ```sql
+-- 一次性迁移：补全 ticker_analyses 表所需列（若列已存在则跳过）
+ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS valuation_metrics JSONB;
 ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS growth_rate DOUBLE PRECISION;
 ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS discount_rate DOUBLE PRECISION;
 ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS terminal_growth_rate DOUBLE PRECISION;
 ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS projection_years INTEGER;
 ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS intrinsic_value_per_share DOUBLE PRECISION;
 ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS current_price DOUBLE PRECISION;
-ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS valuation_metrics JSONB;
 ```
 
-> **注意**：若触发器报错 `EXECUTE FUNCTION` 不存在，可改为 `EXECUTE PROCEDURE update_updated_at()`，或直接删除该触发器，应用层会自行更新 `updated_at`。
+执行成功后，再在应用里尝试「保存分析」或「更新」即可。
+
+> **注意**：若建表时触发器报错 `EXECUTE FUNCTION` 不存在，可改为 `EXECUTE PROCEDURE update_updated_at()`，或直接删除该触发器，应用层会自行更新 `updated_at`。
 
 ## 5. 验证
 
