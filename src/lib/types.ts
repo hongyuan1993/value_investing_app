@@ -39,6 +39,8 @@ export interface ValuationMetricEntry {
 /** 保存分析时写入的 DCF 参数（用于回显与对比） */
 export interface SavedDcfParams {
   growthRate: number;
+  /** 第 6 年及以后 FCF 年增长率；缺省与 growthRate 相同 */
+  growthRateLate?: number;
   discountRate: number;
   terminalGrowthRate: number;
   projectionYears: number;

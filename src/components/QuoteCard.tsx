@@ -27,54 +27,54 @@ export function QuoteCard({ quote }: QuoteCardProps) {
   const isUp = change >= 0;
 
   return (
-    <div className="rounded-xl border border-bloom-border bg-bloom-surface p-5">
-      <div className="flex items-start justify-between gap-4">
+    <div className="app-card overflow-hidden p-6 sm:p-7">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-bloom-accent" />
+          <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-white sm:text-2xl">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-bloom-accent/15 text-bloom-accent ring-1 ring-bloom-accent/20">
+              <Building2 className="h-5 w-5" />
+            </span>
             {quote.shortName ?? quote.symbol}
           </h2>
-          <p className="text-bloom-muted text-sm font-mono mt-0.5">{quote.symbol}</p>
+          <p className="mt-1 font-mono text-sm text-bloom-muted">{quote.symbol}</p>
         </div>
-        <div className="text-right">
-          <p className="text-2xl font-mono font-semibold text-white">
-            {quote.currency === "USD" ? "$" : ""}{formatNum(price)}
+        <div className="text-left sm:text-right">
+          <p className="font-mono text-3xl font-semibold tracking-tight text-white tabular-nums">
+            {quote.currency === "USD" ? "$" : ""}
+            {formatNum(price)}
           </p>
-          <p className={`text-sm font-mono flex items-center justify-end gap-1 ${isUp ? "text-bloom-green" : "text-bloom-red"}`}>
+          <p
+            className={`mt-1 flex items-center gap-1 font-mono text-sm tabular-nums sm:justify-end ${isUp ? "text-bloom-green" : "text-bloom-red"}`}
+          >
             {isUp ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
-            {isUp ? "+" : ""}{formatNum(change)} ({isUp ? "+" : ""}{formatNum(changePct)}%)
+            {isUp ? "+" : ""}
+            {formatNum(change)} ({isUp ? "+" : ""}
+            {formatNum(changePct)}%)
           </p>
         </div>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 pt-4 border-t border-bloom-border">
-        <div className="flex items-center gap-2">
-          <DollarSign className="h-4 w-4 text-bloom-muted" />
-          <div>
-            <p className="text-xs text-bloom-muted">市值</p>
-            <p className="font-mono text-sm text-white">{formatBig(quote.marketCap)}</p>
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+        {[
+          { icon: DollarSign, label: "市值", value: formatBig(quote.marketCap) },
+          { icon: BarChart3, label: "市盈率（TTM）", value: formatNum(quote.trailingPE) === "—" ? "—" : formatNum(quote.trailingPE) },
+          { icon: BarChart3, label: "预期市盈率", value: formatNum(quote.forwardPE) },
+          {
+            icon: Building2,
+            label: "流通股数",
+            value: quote.sharesOutstanding != null ? formatBig(quote.sharesOutstanding) : "—",
+          },
+        ].map(({ icon: Icon, label, value }) => (
+          <div
+            key={label}
+            className="rounded-xl border border-white/[0.05] bg-bloom-bg/40 px-3 py-3 sm:px-4"
+          >
+            <div className="flex items-center gap-2 text-bloom-muted">
+              <Icon className="h-3.5 w-3.5 shrink-0 opacity-80" />
+              <p className="text-[11px] font-medium uppercase tracking-wide">{label}</p>
+            </div>
+            <p className="mt-1.5 font-mono text-sm text-white tabular-nums">{value}</p>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <BarChart3 className="h-4 w-4 text-bloom-muted" />
-          <div>
-            <p className="text-xs text-bloom-muted">市盈率（TTM）</p>
-            <p className="font-mono text-sm text-white">{formatNum(quote.trailingPE) === "—" ? "—" : formatNum(quote.trailingPE)}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <BarChart3 className="h-4 w-4 text-bloom-muted" />
-          <div>
-            <p className="text-xs text-bloom-muted">预期市盈率</p>
-            <p className="font-mono text-sm text-white">{formatNum(quote.forwardPE)}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Building2 className="h-4 w-4 text-bloom-muted" />
-          <div>
-            <p className="text-xs text-bloom-muted">流通股数</p>
-            <p className="font-mono text-sm text-white">{quote.sharesOutstanding != null ? formatBig(quote.sharesOutstanding) : "—"}</p>
-          </div>
-        </div>
+        ))}
       </div>
     </div>
   );

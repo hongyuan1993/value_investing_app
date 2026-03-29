@@ -69,6 +69,228 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Yahoo 财报数值常为 { raw: number } */
+function parseYahooNum(v: unknown): number | undefined {
+  if (v == null) return undefined;
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "object" && v !== null && "raw" in v) {
+    const n = Number((v as { raw: unknown }).raw);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return parseNum(v);
+}
+
+type MonthlyPricePoint = { year: number; month: number; date: string; close: number };
+
+function buildValuationEntriesFromMonthlyAndAnnual(
+  monthlyPrices: MonthlyPricePoint[],
+  revenueByYear: Record<number, number>,
+  epsByYear: Record<number, number>,
+  fcfByYear: Record<number, number>,
+  sharesOutstanding: number
+): ValuationMetricEntry[] {
+  const fiveYearsAgo = new Date().getFullYear() - 5;
+  const fromIndex = monthlyPrices.findIndex((p) => p.year >= fiveYearsAgo && (p.year > fiveYearsAgo || p.month >= 1));
+  const slice = fromIndex < 0 ? monthlyPrices : monthlyPrices.slice(fromIndex);
+  const last60 = slice.slice(-60);
+  if (last60.length === 0 || !sharesOutstanding || sharesOutstanding <= 0) return [];
+  return last60.map(({ year, month, close }) => {
+    const revenue = revenueByYear[year];
+    const eps = epsByYear[year];
+    const fcf = fcfByYear[year];
+    const marketCap = close * sharesOutstanding;
+    const ps = revenue != null && revenue > 0 ? marketCap / revenue : null;
+    const peGaap = eps != null && eps > 0 ? close / eps : null;
+    const pfcf = fcf != null && fcf > 0 ? marketCap / fcf : null;
+    return {
+      year,
+      month,
+      ps: ps != null && Number.isFinite(ps) ? ps : null,
+      peGaap: peGaap != null && Number.isFinite(peGaap) ? peGaap : null,
+      pfcf: pfcf != null && Number.isFinite(pfcf) ? pfcf : null,
+      price: close,
+    };
+  });
+}
+
+/** Yahoo v8 chart：月线收盘价（约 5 年） */
+async function fetchYahooMonthlyChart(symbol: string): Promise<MonthlyPricePoint[]> {
+  const hosts = ["https://query1.finance.yahoo.com", "https://query2.finance.yahoo.com"];
+  for (const host of hosts) {
+    try {
+      const url = `${host}/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1mo&range=5y`;
+      const res = await fetch(url, { headers: FETCH_HEADERS, next: { revalidate: 3600 } });
+      if (!res.ok) continue;
+      const data = (await res.json()) as {
+        chart?: { result?: { timestamp?: number[]; indicators?: { quote?: { close?: (number | null)[] }[] } }[] };
+      };
+      const result = data?.chart?.result?.[0];
+      const ts = result?.timestamp;
+      const closes = result?.indicators?.quote?.[0]?.close;
+      if (!ts?.length || !closes?.length) continue;
+      const out: MonthlyPricePoint[] = [];
+      for (let i = 0; i < ts.length; i++) {
+        const close = closes[i];
+        if (close == null || !Number.isFinite(close)) continue;
+        const d = new Date(ts[i] * 1000);
+        const y = d.getUTCFullYear();
+        const m = d.getUTCMonth() + 1;
+        const dateStr = `${y}-${String(m).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+        out.push({ year: y, month: m, date: dateStr, close });
+      }
+      out.sort((a, b) => (a.year !== b.year ? a.year - b.year : a.month - b.month));
+      return out;
+    } catch {
+      continue;
+    }
+  }
+  return [];
+}
+
+function revenueByYearFromYahooIncome(incomeStatements: Record<string, unknown>[] | undefined): Record<number, number> {
+  const revenueByYear: Record<number, number> = {};
+  if (!Array.isArray(incomeStatements)) return revenueByYear;
+  for (const r of incomeStatements) {
+    const endDate = r.endDate as { raw?: number } | number | undefined;
+    const ts =
+      typeof endDate === "object" && endDate != null && "raw" in endDate
+        ? (endDate as { raw: number }).raw
+        : typeof endDate === "number"
+          ? endDate
+          : undefined;
+    if (ts == null) continue;
+    const y = new Date(ts * 1000).getUTCFullYear();
+    const rev = parseYahooNum(r.totalRevenue);
+    if (rev != null && Number.isFinite(rev)) revenueByYear[y] = rev;
+  }
+  return revenueByYear;
+}
+
+/** 年报 diluted EPS：netIncome / dilutedAverageShares */
+function epsByYearFromYahooIncome(incomeStatements: Record<string, unknown>[] | undefined): Record<number, number> {
+  const epsByYear: Record<number, number> = {};
+  if (!Array.isArray(incomeStatements)) return epsByYear;
+  for (const r of incomeStatements) {
+    const endDate = r.endDate as { raw?: number } | number | undefined;
+    const ts =
+      typeof endDate === "object" && endDate != null && "raw" in endDate
+        ? (endDate as { raw: number }).raw
+        : typeof endDate === "number"
+          ? endDate
+          : undefined;
+    if (ts == null) continue;
+    const y = new Date(ts * 1000).getUTCFullYear();
+    const ni = parseYahooNum(r.netIncome);
+    const shares = parseYahooNum(r.dilutedAverageShares ?? r.weightedAverageShsOutDil ?? (r as { dilutedAverageShares?: unknown }).dilutedAverageShares);
+    if (ni != null && shares != null && shares > 0) epsByYear[y] = ni / shares;
+  }
+  return epsByYear;
+}
+
+function fcfByYearFromYahooCashflow(cashflowStatements: Record<string, unknown>[] | undefined): Record<number, number> {
+  const fcfByYear: Record<number, number> = {};
+  if (!Array.isArray(cashflowStatements)) return fcfByYear;
+  for (const r of cashflowStatements) {
+    const endDate = r.endDate as { raw?: number } | number | undefined;
+    const ts =
+      typeof endDate === "object" && endDate != null && "raw" in endDate
+        ? (endDate as { raw: number }).raw
+        : typeof endDate === "number"
+          ? endDate
+          : undefined;
+    if (ts == null) continue;
+    const y = new Date(ts * 1000).getUTCFullYear();
+    const op = parseYahooNum(r.totalCashFromOperatingActivities);
+    const capEx = parseYahooNum(r.capitalExpenditures);
+    const fcf = op != null && capEx != null ? op - Math.abs(capEx) : op ?? undefined;
+    if (fcf != null && Number.isFinite(fcf)) fcfByYear[y] = fcf;
+  }
+  return fcfByYear;
+}
+
+/** 将 Yahoo 现金流年报转为 Alpha 接口相近结构，供 Alpha 估值补全 */
+function yahooCashflowToAlphaAnnual(cashflowStatements: Record<string, unknown>[]): Record<string, unknown>[] {
+  return cashflowStatements.map((item) => {
+    const endDate = item.endDate as { raw?: number } | number | undefined;
+    const ts =
+      typeof endDate === "object" && endDate != null && "raw" in endDate
+        ? (endDate as { raw: number }).raw
+        : typeof endDate === "number"
+          ? endDate
+          : undefined;
+    const iso = ts != null ? new Date(ts * 1000).toISOString().slice(0, 10) : "";
+    return {
+      fiscalDateEnding: iso,
+      operatingCashflow: parseYahooNum(item.totalCashFromOperatingActivities),
+      capitalExpenditures: parseYahooNum(item.capitalExpenditures),
+    };
+  });
+}
+
+async function fetchYahooQuoteSummaryFull(symbol: string): Promise<{
+  cashflowStatementHistory?: { cashflowStatements?: Record<string, unknown>[] };
+  defaultKeyStatistics?: { sharesOutstanding?: number; beta?: number };
+  assetProfile?: { sector?: string };
+  incomeStatementHistory?: { incomeStatements?: Record<string, unknown>[] };
+} | null> {
+  const hosts = ["https://query1.finance.yahoo.com", "https://query2.finance.yahoo.com"];
+  const modules =
+    "cashflowStatementHistory,defaultKeyStatistics,assetProfile,incomeStatementHistory";
+  for (const host of hosts) {
+    try {
+      const url = new URL(`${host}/v10/finance/quoteSummary/${encodeURIComponent(symbol)}`);
+      url.searchParams.set("modules", modules);
+      const res = await fetch(url.toString(), {
+        headers: FETCH_HEADERS,
+        next: { revalidate: 3600 },
+      });
+      if (!res.ok) continue;
+      if (!res.headers.get("content-type")?.includes("application/json")) continue;
+      const text = await res.text();
+      if (!text.trimStart().startsWith("{")) continue;
+      const data = JSON.parse(text) as { quoteSummary?: { result?: unknown[] } };
+      const body = data?.quoteSummary?.result?.[0];
+      if (body && typeof body === "object")
+        return body as {
+          cashflowStatementHistory?: { cashflowStatements?: Record<string, unknown>[] };
+          defaultKeyStatistics?: { sharesOutstanding?: number; beta?: number };
+          assetProfile?: { sector?: string };
+          incomeStatementHistory?: { incomeStatements?: Record<string, unknown>[] };
+        };
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+/** 优先用 Yahoo 图表 + 财报计算估值指标；数据不足时返回 [] */
+async function fetchValuationMetricsFromYahoo(
+  symbol: string,
+  sharesOutstanding: number,
+  summary: NonNullable<Awaited<ReturnType<typeof fetchYahooQuoteSummaryFull>>>
+): Promise<ValuationMetricEntry[]> {
+  const monthlyPrices = await fetchYahooMonthlyChart(symbol);
+  if (monthlyPrices.length === 0 || !sharesOutstanding || sharesOutstanding <= 0) return [];
+
+  const incomeStatements =
+    (summary.incomeStatementHistory as { incomeStatements?: Record<string, unknown>[] } | undefined)?.incomeStatements ?? [];
+  const revenueByYear = revenueByYearFromYahooIncome(incomeStatements);
+  const epsByYear = epsByYearFromYahooIncome(incomeStatements);
+  const cashflowStatements =
+    (summary.cashflowStatementHistory as { cashflowStatements?: Record<string, unknown>[] } | undefined)?.cashflowStatements ?? [];
+  const fcfByYear = fcfByYearFromYahooCashflow(cashflowStatements);
+
+  const entries = buildValuationEntriesFromMonthlyAndAnnual(
+    monthlyPrices,
+    revenueByYear,
+    epsByYear,
+    fcfByYear,
+    sharesOutstanding
+  );
+  return entries;
+}
+
 /** 从 Alpha Vantage 抓取过去 5 年 P/S、P/E (GAAP)、P/FCF，用于估值指标折线图 */
 async function fetchValuationMetricsAlpha(
   symbol: string,
@@ -154,32 +376,7 @@ async function fetchValuationMetricsAlpha(
       if (close != null && Number.isFinite(close)) monthlyPrices.push({ year: y, month: m, date: dateStr, close });
     }
     monthlyPrices.sort((a, b) => (a.year !== b.year ? a.year - b.year : a.month - b.month));
-    const fiveYearsAgo = new Date().getFullYear() - 5;
-    const fromIndex = monthlyPrices.findIndex((p) => p.year >= fiveYearsAgo && (p.year > fiveYearsAgo || p.month >= 1));
-    const slice = fromIndex < 0 ? monthlyPrices : monthlyPrices.slice(fromIndex);
-    const last60 = slice.slice(-60);
-
-    if (last60.length === 0 || !sharesOutstanding || sharesOutstanding <= 0) return [];
-
-    const entries: ValuationMetricEntry[] = last60.map(({ year, month, close }) => {
-      const revenue = revenueByYear[year];
-      const eps = epsByYear[year];
-      const fcf = fcfByYear[year];
-      const marketCap = close * sharesOutstanding;
-      const ps = revenue != null && revenue > 0 ? marketCap / revenue : null;
-      const peGaap = eps != null && eps > 0 ? close / eps : null;
-      const pfcf = fcf != null && fcf > 0 ? marketCap / fcf : null;
-      return {
-        year,
-        month,
-        ps: ps != null && Number.isFinite(ps) ? ps : null,
-        peGaap: peGaap != null && Number.isFinite(peGaap) ? peGaap : null,
-        pfcf: pfcf != null && Number.isFinite(pfcf) ? pfcf : null,
-        price: close,
-      };
-    });
-
-    return entries;
+    return buildValuationEntriesFromMonthlyAndAnnual(monthlyPrices, revenueByYear, epsByYear, fcfByYear, sharesOutstanding);
   } catch {
     return [];
   }
@@ -368,42 +565,6 @@ async function fetchYahooAnalystGrowth5y(symbol: string): Promise<number | null>
   return null;
 }
 
-async function fetchQuoteSummary(symbol: string): Promise<{
-  cashflowStatementHistory?: { cashflowStatements?: Record<string, unknown>[] };
-  defaultKeyStatistics?: { sharesOutstanding?: number; beta?: number };
-} | null> {
-  const hosts = [
-    "https://query1.finance.yahoo.com",
-    "https://query2.finance.yahoo.com",
-  ];
-  for (const host of hosts) {
-    try {
-      const url = new URL(
-        `${host}/v10/finance/quoteSummary/${encodeURIComponent(symbol)}`
-      );
-      url.searchParams.set("modules", "cashflowStatementHistory,defaultKeyStatistics");
-      const res = await fetch(url.toString(), {
-        headers: FETCH_HEADERS,
-        next: { revalidate: 3600 },
-      });
-      if (!res.ok) continue;
-      const contentType = res.headers.get("content-type") ?? "";
-      if (!contentType.includes("application/json")) continue;
-      const text = await res.text();
-      if (!text.trimStart().startsWith("{")) continue;
-      const data = JSON.parse(text) as { quoteSummary?: { result?: unknown[] } };
-      const body = data?.quoteSummary?.result?.[0];
-      if (body && typeof body === "object") return body as {
-        cashflowStatementHistory?: { cashflowStatements?: Record<string, unknown>[] };
-        defaultKeyStatistics?: { sharesOutstanding?: number; beta?: number };
-      };
-    } catch {
-      continue;
-    }
-  }
-  return null;
-}
-
 function toStockQuote(raw: Record<string, unknown>, ticker: string): StockQuote {
   const n = (key: string) => raw[key] as number | undefined;
   const s = (key: string) => raw[key] as string | undefined;
@@ -422,20 +583,26 @@ function toStockQuote(raw: Record<string, unknown>, ticker: string): StockQuote 
 }
 
 function toFCFEntry(item: Record<string, unknown>): FCFEntry {
-  const endDate = item.endDate as number | undefined;
-  const date = endDate ?? (item.date as number) ?? 0;
-  let freeCashflow = item.freeCashflow as number | undefined;
+  const endDateRaw = item.endDate as { raw?: number } | number | undefined;
+  const ts =
+    typeof endDateRaw === "object" && endDateRaw != null && "raw" in endDateRaw
+      ? (endDateRaw as { raw: number }).raw
+      : typeof endDateRaw === "number"
+        ? endDateRaw
+        : undefined;
+  const date = ts ?? (item.date as number) ?? 0;
+  let freeCashflow = parseYahooNum(item.freeCashflow) ?? (item.freeCashflow as number | undefined);
   if (freeCashflow == null) {
-    const operating = item.totalCashFromOperatingActivities as number | undefined;
-    const capEx = (item.capitalExpenditures as number | undefined) ?? 0;
+    const operating = parseYahooNum(item.totalCashFromOperatingActivities) ?? (item.totalCashFromOperatingActivities as number | undefined);
+    const capEx = parseYahooNum(item.capitalExpenditures) ?? (item.capitalExpenditures as number | undefined) ?? 0;
     if (operating != null && Number.isFinite(operating))
       freeCashflow = operating - Math.abs(capEx);
   }
   return {
     date: typeof date === "number" ? date : Date.parse(String(date)) || 0,
     freeCashflow,
-    operatingCashflow: item.totalCashFromOperatingActivities as number | undefined,
-    capitalExpenditure: item.capitalExpenditures as number | undefined,
+    operatingCashflow: parseYahooNum(item.totalCashFromOperatingActivities) ?? (item.totalCashFromOperatingActivities as number | undefined),
+    capitalExpenditure: parseYahooNum(item.capitalExpenditures) ?? (item.capitalExpenditures as number | undefined),
   };
 }
 
@@ -446,10 +613,57 @@ function jsonResponse(body: { error?: string } | TickerData, status: number) {
   });
 }
 
-/** 从网上抓取股票数据（Alpha Vantage / Yahoo） */
+/** 从网上抓取股票数据：优先 Yahoo Finance，估值指标在 Yahoo 不足时用 Alpha Vantage 补全 */
 async function fetchTickerDataFromWeb(
   ticker: string
 ): Promise<TickerData | { error: string }> {
+  const [quoteRaw, summaryFull] = await Promise.all([
+    fetchQuote(ticker),
+    fetchYahooQuoteSummaryFull(ticker),
+  ]);
+
+  if (quoteRaw) {
+    const quote: StockQuote = toStockQuote(quoteRaw, ticker);
+    const sharesFromSummary = summaryFull?.defaultKeyStatistics?.sharesOutstanding;
+    if (sharesFromSummary != null && Number.isFinite(sharesFromSummary))
+      quote.sharesOutstanding = sharesFromSummary;
+
+    const cashflowStatements =
+      (summaryFull?.cashflowStatementHistory as { cashflowStatements?: Record<string, unknown>[] } | undefined)
+        ?.cashflowStatements ?? [];
+    const fcfHistory: FCFEntry[] = cashflowStatements
+      .map(toFCFEntry)
+      .filter((e) => e.freeCashflow != null && Number.isFinite(e.freeCashflow))
+      .sort((a, b) => b.date - a.date)
+      .slice(0, 10);
+
+    const analyst5y = await fetchYahooAnalystGrowth5y(ticker);
+    const beta = parseNum((summaryFull?.defaultKeyStatistics as { beta?: number } | undefined)?.beta);
+    const sector = (summaryFull?.assetProfile as { sector?: string } | undefined)?.sector;
+    const waccResult = suggestWacc(beta, sector);
+
+    const payload: TickerData = { quote, fcfHistory };
+    if (analyst5y != null) payload.analystGrowthRate5y = analyst5y;
+    if (waccResult) {
+      payload.suggestedWacc = waccResult.wacc;
+      payload.waccSource = waccResult.source;
+    }
+
+    const shares = quote.sharesOutstanding ?? 0;
+    let valuationMetrics: ValuationMetricEntry[] = [];
+    if (summaryFull) {
+      valuationMetrics = await fetchValuationMetricsFromYahoo(ticker, shares, summaryFull);
+    }
+    const alphaKey = process.env.ALPHA_VANTAGE_API_KEY?.trim();
+    if (valuationMetrics.length === 0 && alphaKey) {
+      const annualReports = yahooCashflowToAlphaAnnual(cashflowStatements);
+      valuationMetrics = await fetchValuationMetricsAlpha(ticker, alphaKey, shares, annualReports);
+    }
+    if (valuationMetrics.length > 0) payload.valuationMetrics = valuationMetrics;
+
+    return payload;
+  }
+
   const alpha = await fetchFromAlphaVantage(ticker);
   if (alpha.ok) {
     const analyst5y = await fetchYahooAnalystGrowth5y(ticker);
@@ -464,41 +678,9 @@ async function fetchTickerDataFromWeb(
     return { error: alpha.error };
   }
 
-  const [quoteRaw, summaryResult] = await Promise.all([
-    fetchQuote(ticker),
-    fetchQuoteSummary(ticker),
-  ]);
-
-  if (!quoteRaw) {
-    const hint =
-      " 请在 .env.local 中配置 ALPHA_VANTAGE_API_KEY（免费申请：https://www.alphavantage.co/support/#api-key），修改后需重启开发服务器。";
-    return { error: "未找到行情。" + hint };
-  }
-
-  const quote: StockQuote = toStockQuote(quoteRaw, ticker);
-  const sharesFromSummary = summaryResult?.defaultKeyStatistics?.sharesOutstanding;
-  if (sharesFromSummary != null && Number.isFinite(sharesFromSummary))
-    quote.sharesOutstanding = sharesFromSummary;
-
-  const cashflowStatements =
-    (summaryResult?.cashflowStatementHistory as { cashflowStatements?: Record<string, unknown>[] } | undefined)
-      ?.cashflowStatements ?? [];
-  const fcfHistory: FCFEntry[] = cashflowStatements
-    .map(toFCFEntry)
-    .filter((e) => e.freeCashflow != null && Number.isFinite(e.freeCashflow))
-    .sort((a, b) => b.date - a.date)
-    .slice(0, 10);
-
-  const analyst5y = await fetchYahooAnalystGrowth5y(ticker);
-  const beta = parseNum((summaryResult?.defaultKeyStatistics as { beta?: number } | undefined)?.beta);
-  const waccResult = suggestWacc(beta, undefined);
-  const payload: TickerData = { quote, fcfHistory };
-  if (analyst5y != null) payload.analystGrowthRate5y = analyst5y;
-  if (waccResult) {
-    payload.suggestedWacc = waccResult.wacc;
-    payload.waccSource = waccResult.source;
-  }
-  return payload;
+  const hint =
+    " 未找到 Yahoo 行情且未配置 ALPHA_VANTAGE_API_KEY。请检查股票代码或在 .env.local 中配置 ALPHA_VANTAGE_API_KEY。";
+  return { error: "未找到行情。" + hint };
 }
 
 export async function GET(

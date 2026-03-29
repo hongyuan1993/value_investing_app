@@ -50,8 +50,8 @@ export function ValuationChart({ data }: ValuationChartProps) {
   };
 
   return (
-    <div className="rounded-xl border border-bloom-border bg-bloom-surface p-4">
-      <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-4">
+    <div className="app-card p-5 sm:p-6">
+      <h3 className="mb-4 text-sm font-semibold tracking-wide text-white">
         {isMonthly ? "估值指标（按月，过去 5 年）" : "估值指标（过去 5 年）"}
       </h3>
       <div className="h-[280px] w-full">
@@ -74,9 +74,10 @@ export function ValuationChart({ data }: ValuationChartProps) {
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: "var(--bloom-surface)",
-                border: "1px solid var(--bloom-border)",
-                borderRadius: "8px",
+                backgroundColor: "rgba(15, 17, 24, 0.95)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "12px",
+                boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
               }}
               labelStyle={{ color: "var(--bloom-muted)" }}
               formatter={(value, name) => [formatTooltipValue(typeof value === "number" ? value : null), name ?? ""]}

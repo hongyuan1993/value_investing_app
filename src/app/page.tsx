@@ -19,6 +19,7 @@ export default function Home() {
 
   const [params, setParams] = useState<DCFParamValues>({
     growthRate: 0.10,
+    growthRateLate: 0.10,
     discountRate: 0.10,
     terminalGrowthRate: 0.025,
     projectionYears: 5,
@@ -53,8 +54,10 @@ export default function Home() {
       const saved = tickerData.savedDcfParams;
       if (saved && Number.isFinite(saved.growthRate) && Number.isFinite(saved.discountRate) && Number.isFinite(saved.terminalGrowthRate) && Number.isFinite(saved.projectionYears)) {
         setGrowthRateSource("已保存的分析参数");
+        const late = saved.growthRateLate ?? saved.growthRate;
         setParams({
           growthRate: saved.growthRate,
+          growthRateLate: late,
           discountRate: saved.discountRate,
           terminalGrowthRate: saved.terminalGrowthRate,
           projectionYears: saved.projectionYears,
@@ -81,9 +84,11 @@ export default function Home() {
         setGrowthRateSource(sourceText);
         const suggestedWacc = tickerData.suggestedWacc;
         const hasWacc = suggestedWacc != null && Number.isFinite(suggestedWacc) && suggestedWacc >= 0.05 && suggestedWacc <= 0.25;
+        const g = initialGrowth != null && initialGrowth > 0 ? initialGrowth : undefined;
         setParams((prev) => ({
           ...prev,
-          growthRate: initialGrowth != null && initialGrowth > 0 ? initialGrowth : prev.growthRate,
+          growthRate: g ?? prev.growthRate,
+          growthRateLate: g ?? prev.growthRateLate,
           discountRate: hasWacc ? suggestedWacc : prev.discountRate,
         }));
       }
@@ -113,6 +118,7 @@ export default function Home() {
       baseFcf: latestFcf,
       projectionYears: params.projectionYears,
       growthRate: params.growthRate,
+      growthRateLate: params.growthRateLate,
       discountRate: params.discountRate,
       terminalGrowthRate: params.terminalGrowthRate,
       sharesOutstanding: shares,
@@ -141,6 +147,7 @@ export default function Home() {
           waccSource: data.waccSource,
           valuationMetrics: data.valuationMetrics,
           growthRate: params.growthRate,
+          growthRateLate: params.growthRateLate,
           discountRate: params.discountRate,
           terminalGrowthRate: params.terminalGrowthRate,
           projectionYears: params.projectionYears,
@@ -161,6 +168,7 @@ export default function Home() {
   const [adviceLoading, setAdviceLoading] = useState(false);
   const [advice, setAdvice] = useState<{
     growthRate: number;
+    growthRateLate: number;
     discountRate: number;
     terminalGrowthRate: number;
     projectionYears: number;
@@ -204,6 +212,7 @@ export default function Home() {
     if (!advice) return;
     setParams({
       growthRate: advice.growthRate,
+      growthRateLate: advice.growthRateLate,
       discountRate: advice.discountRate,
       terminalGrowthRate: advice.terminalGrowthRate,
       projectionYears: advice.projectionYears,
@@ -211,49 +220,48 @@ export default function Home() {
   }, [advice]);
 
   return (
-    <div className="min-h-screen bg-bloom-bg">
-      <header className="border-b border-bloom-border bg-bloom-surface/80 backdrop-blur">
-        <div className="max-w-5xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-lg font-semibold text-white">DCF 内在价值</h1>
-            <div className="flex items-center gap-4">
-              <Link
-                href="/method"
-                className="text-sm text-bloom-muted hover:text-white transition-colors"
-              >
+    <div className="min-h-screen">
+      <header className="app-header-bar sticky top-0 z-40">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-5">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight text-white sm:text-2xl">DCF 内在价值</h1>
+              <p className="mt-0.5 text-sm text-bloom-muted">现金流折现 · 美股估值</p>
+            </div>
+            <nav className="flex items-center gap-1 sm:gap-2">
+              <Link href="/method" className="nav-link">
                 估值方法
               </Link>
-              <Link
-                href="/saved"
-                className="text-sm text-bloom-muted hover:text-white transition-colors"
-              >
+              <Link href="/saved" className="nav-link">
                 分析历史
               </Link>
-            </div>
+            </nav>
           </div>
-          <TickerSearch onSearch={fetchTicker} loading={loading} />
+          <div className="mt-5">
+            <TickerSearch onSearch={fetchTicker} loading={loading} />
+          </div>
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8">
         {loading && (
-          <div className="flex items-center justify-center py-12 text-bloom-muted">
-            <Loader2 className="h-8 w-8 animate-spin mr-2" />
-            加载中…
+          <div className="flex flex-col items-center justify-center gap-3 py-16 text-bloom-muted">
+            <Loader2 className="h-9 w-9 animate-spin text-bloom-accent" />
+            <span className="text-sm font-medium">正在拉取数据…</span>
           </div>
         )}
 
         {error && (
-          <div className="flex items-center gap-2 rounded-lg border border-bloom-red/50 bg-bloom-red/10 text-bloom-red px-4 py-3">
-            <AlertCircle className="h-5 w-5 shrink-0" />
-            <p>{error}</p>
+          <div className="flex items-start gap-3 rounded-2xl border border-bloom-red/30 bg-bloom-red/10 px-4 py-3.5 text-bloom-red shadow-card">
+            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+            <p className="text-sm leading-relaxed">{error}</p>
           </div>
         )}
 
         {noFCFWarning && !loading && (
-          <div className="flex items-center gap-2 rounded-lg border border-bloom-amber/50 bg-bloom-amber/10 text-bloom-amber px-4 py-3">
-            <AlertCircle className="h-5 w-5 shrink-0" />
-            <p>该标的暂无或缺少自由现金流数据，无法计算 DCF 估值。</p>
+          <div className="flex items-start gap-3 rounded-2xl border border-bloom-amber/25 bg-bloom-amber/10 px-4 py-3.5 text-bloom-amber shadow-card">
+            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+            <p className="text-sm leading-relaxed">该标的暂无或缺少自由现金流数据，无法计算 DCF 估值。</p>
           </div>
         )}
 
@@ -265,24 +273,24 @@ export default function Home() {
               <ValuationChart data={data.valuationMetrics} />
             )}
             {data && (!data.valuationMetrics || data.valuationMetrics.length === 0) && (
-              <p className="text-xs text-bloom-muted rounded-xl border border-bloom-border bg-bloom-surface/50 px-4 py-3">
+              <p className="text-xs text-bloom-muted rounded-2xl border border-white/[0.06] bg-bloom-surface/60 px-4 py-3.5 leading-relaxed">
                 暂无估值指标折线图（需使用 Alpha Vantage 抓取）。在「分析历史」中对该股票点击「更新」可重新抓取并显示 P/S、P/E、P/FCF 走势。
               </p>
             )}
 
             {hasFCF && (
               <>
-                <div className="rounded-xl border border-bloom-border bg-bloom-surface p-5">
-                  <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-3 flex items-center gap-2">
+                <div className="app-card p-6">
+                  <h3 className="text-sm font-semibold text-white tracking-wide mb-1 flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-bloom-amber" />
                     DCF 参数专家意见
                   </h3>
-                  <p className="text-xs text-bloom-muted mb-3">由 Gemini 大模型根据公司数据给出参数建议，仅供参考。</p>
+                  <p className="text-xs text-bloom-muted mb-4">由 Gemini 大模型根据公司数据给出参数建议，仅供参考。</p>
                   <div className="flex flex-wrap gap-3">
                     <button
                       onClick={fetchAdvice}
                       disabled={adviceLoading}
-                      className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium bg-bloom-amber/20 text-bloom-amber hover:bg-bloom-amber/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium bg-bloom-amber/15 text-bloom-amber ring-1 ring-bloom-amber/20 hover:bg-bloom-amber/25 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       {adviceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                       {adviceLoading ? "获取中…" : "获取专家意见"}
@@ -290,7 +298,7 @@ export default function Home() {
                     {advice && (
                       <button
                         onClick={applyAdvice}
-                        className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium bg-bloom-green/20 text-bloom-green hover:bg-bloom-green/30"
+                        className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium bg-bloom-green/15 text-bloom-green ring-1 ring-bloom-green/20 hover:bg-bloom-green/25 transition-colors"
                       >
                         <Check className="h-4 w-4" />
                         采用建议
@@ -304,7 +312,11 @@ export default function Home() {
                     <div className="mt-4 space-y-2 text-sm">
                       <p className="text-bloom-muted">{advice.reasoning}</p>
                       <p className="text-bloom-muted">
-                        建议参数：增长率 {(advice.growthRate * 100).toFixed(1)}%，折现率 {(advice.discountRate * 100).toFixed(1)}%，永续增长率 {(advice.terminalGrowthRate * 100).toFixed(1)}%，预测 {advice.projectionYears} 年
+                        建议参数：前 5 年增长率 {(advice.growthRate * 100).toFixed(1)}%
+                        {advice.projectionYears > 5
+                          ? `，第 6 年及以后 ${(advice.growthRateLate * 100).toFixed(1)}%`
+                          : ""}
+                        ，折现率 {(advice.discountRate * 100).toFixed(1)}%，永续 {(advice.terminalGrowthRate * 100).toFixed(1)}%，预测 {advice.projectionYears} 年
                       </p>
                     </div>
                   )}
@@ -327,7 +339,7 @@ export default function Home() {
                     <button
                       onClick={handleSave}
                       disabled={saving || !dcfResult}
-                      className="w-full inline-flex items-center justify-center gap-2 rounded-lg py-3 px-4 text-sm font-medium bg-bloom-accent/20 text-bloom-accent hover:bg-bloom-accent/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl py-3.5 px-4 text-sm font-semibold bg-bloom-accent/15 text-bloom-accent ring-1 ring-bloom-accent/25 hover:bg-bloom-accent/25 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       {saving ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -344,8 +356,8 @@ export default function Home() {
                 </div>
 
                 {dcfResult && (
-                  <div className="rounded-xl border border-bloom-border bg-bloom-surface p-5">
-                    <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-3">DCF 汇总</h3>
+                  <div className="app-card p-6">
+                    <h3 className="text-sm font-semibold text-white tracking-wide mb-4">DCF 汇总</h3>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
                       <div>
                         <p className="text-bloom-muted">预测期 FCF 现值（{params.projectionYears} 年）</p>
@@ -372,8 +384,11 @@ export default function Home() {
         )}
 
         {!data && !loading && !error && (
-          <div className="text-center py-16 text-bloom-muted">
-            <p>输入美股代码（如 AAPL、TSLA）查看行情与 DCF 估值。</p>
+          <div className="app-card mx-auto max-w-lg px-8 py-14 text-center">
+            <p className="text-sm font-medium text-white">开始分析</p>
+            <p className="mt-2 text-sm text-bloom-muted leading-relaxed">
+              输入美股代码（如 AAPL、MSFT）查看行情、估值指标与 DCF 内在价值。
+            </p>
           </div>
         )}
       </main>

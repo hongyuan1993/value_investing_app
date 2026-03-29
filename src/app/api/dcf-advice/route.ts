@@ -1,22 +1,71 @@
 import { NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, GoogleGenerativeAIFetchError } from "@google/generative-ai";
+
+/** 将 SDK / 网络错误转为用户可读文案与合适 HTTP 状态 */
+function mapAdviceError(err: unknown): { message: string; status: number } {
+  const raw = err instanceof Error ? err.message : String(err);
+  const lower = raw.toLowerCase();
+
+  if (err instanceof GoogleGenerativeAIFetchError && err.status === 429) {
+    if (lower.includes("spending cap") || lower.includes("exceeded its spending")) {
+      return {
+        message:
+          "Google AI 项目已达到支出上限。请在 Google Cloud 控制台「结算 → 预算」提高支出上限，或为本项目关联有效结算账号后再试。",
+        status: 429,
+      };
+    }
+    return {
+      message: "Gemini API 请求过于频繁或配额已用尽，请稍后再试。",
+      status: 429,
+    };
+  }
+
+  if (/429|too many requests/i.test(raw) && /spending cap|exceeded its spending/i.test(raw)) {
+    return {
+      message:
+        "Google AI 项目已达到支出上限。请在 Google Cloud 控制台提高预算/支出上限后重试。",
+      status: 429,
+    };
+  }
+
+  if (err instanceof GoogleGenerativeAIFetchError && (err.status === 403 || err.status === 400)) {
+    return {
+      message: "API 密钥无效或无权访问该模型，请检查 GEMINI_API_KEY 与 GEMINI_MODEL。",
+      status: 502,
+    };
+  }
+
+  if (err instanceof SyntaxError || /unexpected token|json parse/i.test(raw)) {
+    return { message: "模型返回格式异常，请重试。", status: 502 };
+  }
+
+  const short =
+    raw.length > 400
+      ? raw.slice(0, 400).replace(/\s+/g, " ").trim() + "…"
+      : raw;
+  return { message: short, status: 502 };
+}
 
 const SYSTEM_PROMPT = `你是一位专业的股票估值分析师，擅长 DCF（现金流折现法）估值。请根据以下公司财务数据，给出 DCF 参数的设定建议。
+
+本应用支持两阶段预测：前 5 个预测年度使用 growthRate；第 6 年及以后使用 growthRateLate（通常不高于前段，反映增速放缓）。若 projectionYears 为 5，则 growthRateLate 可与 growthRate 相同（后段不参与计算）。
 
 请以 JSON 格式回复，且仅回复 JSON，不要其他文字。格式如下：
 {
   "growthRate": 0.12,
+  "growthRateLate": 0.08,
   "discountRate": 0.10,
   "terminalGrowthRate": 0.025,
-  "projectionYears": 5,
+  "projectionYears": 10,
   "reasoning": "根据分析师预期、行业特点、宏观经济等因素的简要分析说明（中文）"
 }
 
 参数说明（均为小数）：
-- growthRate: FCF 增长率，如 0.12 表示 12%
+- growthRate: 前 5 年 FCF 年增长率
+- growthRateLate: 第 6 年及以后 FCF 年增长率（可低于 growthRate）
 - discountRate: 折现率（WACC），通常 0.06–0.15
 - terminalGrowthRate: 永续增长率，通常 0.01–0.03，不应高于长期 GDP 增速
-- projectionYears: 预测年数，通常 5–10 年`;
+- projectionYears: 预测年数，通常 5–10 年；若用两阶段增长建议 8–10 年`;
 
 function buildContext(data: {
   symbol: string;
@@ -27,7 +76,13 @@ function buildContext(data: {
   analystGrowthRate5y?: number;
   suggestedWacc?: number;
   waccSource?: string;
-  currentParams?: { growthRate: number; discountRate: number; terminalGrowthRate: number; projectionYears: number };
+  currentParams?: {
+    growthRate: number;
+    growthRateLate?: number;
+    discountRate: number;
+    terminalGrowthRate: number;
+    projectionYears: number;
+  };
 }): string {
   const fcfYears = data.fcfHistory
     .filter((e) => e.freeCashflow != null)
@@ -56,7 +111,8 @@ ${JSON.stringify(fcfYears, null, 2)}
     text += `WACC 来源：${data.waccSource}\n`;
   }
   if (data.currentParams) {
-    text += `\n用户当前参数：增长率 ${(data.currentParams.growthRate * 100).toFixed(1)}%，折现率 ${(data.currentParams.discountRate * 100).toFixed(1)}%，永续增长率 ${(data.currentParams.terminalGrowthRate * 100).toFixed(1)}%，预测 ${data.currentParams.projectionYears} 年\n`;
+    const late = data.currentParams.growthRateLate ?? data.currentParams.growthRate;
+    text += `\n用户当前参数：前 5 年增长率 ${(data.currentParams.growthRate * 100).toFixed(1)}%，第 6 年及以后 ${(late * 100).toFixed(1)}%，折现率 ${(data.currentParams.discountRate * 100).toFixed(1)}%，永续增长率 ${(data.currentParams.terminalGrowthRate * 100).toFixed(1)}%，预测 ${data.currentParams.projectionYears} 年\n`;
   }
 
   return text;
@@ -108,14 +164,18 @@ export async function POST(request: Request) {
 
     const parsed = JSON.parse(jsonStr) as {
       growthRate?: number;
+      growthRateLate?: number;
       discountRate?: number;
       terminalGrowthRate?: number;
       projectionYears?: number;
       reasoning?: string;
     };
 
+    const g0 = clamp(parsed.growthRate ?? 0.1, 0.01, 0.5);
+    const g1 = clamp(parsed.growthRateLate ?? g0, 0.01, 0.5);
     const advice = {
-      growthRate: clamp(parsed.growthRate ?? 0.1, 0.01, 0.5),
+      growthRate: g0,
+      growthRateLate: g1,
       discountRate: clamp(parsed.discountRate ?? 0.1, 0.05, 0.25),
       terminalGrowthRate: clamp(parsed.terminalGrowthRate ?? 0.025, 0.005, 0.05),
       projectionYears: Math.round(clamp(parsed.projectionYears ?? 5, 3, 15)),
@@ -124,8 +184,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json(advice);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "未知错误";
-    return NextResponse.json({ error: "获取专家意见失败：" + message }, { status: 502 });
+    const { message, status } = mapAdviceError(err);
+    return NextResponse.json({ error: "获取专家意见失败：" + message }, { status });
   }
 }
 

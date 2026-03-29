@@ -1,5 +1,18 @@
 import type { Metadata } from "next";
+import { JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
+
+const fontSans = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+});
+
+const fontMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "DCF 估值 | 内在价值计算",
@@ -13,7 +26,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN" className="dark">
-      <body className="font-sans min-h-screen antialiased">
+      <body className={`${fontSans.variable} ${fontMono.variable} font-sans min-h-screen antialiased`}>
         {children}
       </body>
     </html>

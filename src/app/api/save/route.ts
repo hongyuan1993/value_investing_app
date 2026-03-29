@@ -14,6 +14,11 @@ export async function POST(request: Request) {
     const fcfHistory = Array.isArray(body.fcfHistory) ? body.fcfHistory : [];
     const valuationMetrics = Array.isArray(body.valuationMetrics) ? body.valuationMetrics : undefined;
     const growthRate = Number(body.growthRate);
+    const growthRateLateRaw = body.growthRateLate;
+    const growthRateLate =
+      growthRateLateRaw !== undefined && growthRateLateRaw !== null && Number.isFinite(Number(growthRateLateRaw))
+        ? Number(growthRateLateRaw)
+        : growthRate;
     const discountRate = Number(body.discountRate);
     const terminalGrowthRate = Number(body.terminalGrowthRate);
     const projectionYears = Math.round(Number(body.projectionYears) || 5);
@@ -42,6 +47,7 @@ export async function POST(request: Request) {
       waccSource: body.waccSource,
       valuationMetrics,
       growthRate,
+      growthRateLate,
       discountRate,
       terminalGrowthRate,
       projectionYears,

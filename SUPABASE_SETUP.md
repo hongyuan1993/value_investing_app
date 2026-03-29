@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS ticker_analyses (
   wacc_source TEXT,
   valuation_metrics JSONB,
   growth_rate DOUBLE PRECISION,
+  growth_rate_late DOUBLE PRECISION,
   discount_rate DOUBLE PRECISION,
   terminal_growth_rate DOUBLE PRECISION,
   projection_years INTEGER,
@@ -85,7 +86,10 @@ ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS terminal_growth_rate DOUBLE
 ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS projection_years INTEGER;
 ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS intrinsic_value_per_share DOUBLE PRECISION;
 ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS current_price DOUBLE PRECISION;
+ALTER TABLE ticker_analyses ADD COLUMN IF NOT EXISTS growth_rate_late DOUBLE PRECISION;
 ```
+
+`growth_rate_late` 用于两阶段 DCF：第 6 年及以后的 FCF 年增长率；未迁移时保存分析可能失败。
 
 执行成功后，再在应用里尝试「保存分析」或「更新」即可。
 

@@ -18,6 +18,7 @@ export type DbRow = {
   wacc_source: string | null;
   valuation_metrics: unknown;
   growth_rate: number | null;
+  growth_rate_late: number | null;
   discount_rate: number | null;
   terminal_growth_rate: number | null;
   projection_years: number | null;
@@ -44,6 +45,10 @@ export function dbRowToTickerData(row: DbRow): TickerData {
   const savedDcfParams: TickerData["savedDcfParams"] = hasSavedDcf
     ? {
         growthRate: row.growth_rate as number,
+        ...(row.growth_rate_late != null &&
+          Number.isFinite(row.growth_rate_late) && {
+            growthRateLate: row.growth_rate_late as number,
+          }),
         discountRate: row.discount_rate as number,
         terminalGrowthRate: row.terminal_growth_rate as number,
         projectionYears: row.projection_years as number,
@@ -62,6 +67,10 @@ export function dbRowToTickerData(row: DbRow): TickerData {
   };
 }
 
+/**
+ * 仅写入/更新「网上抓取」的市场与财务缓存（行情、FCF、分析师增速、WACC 说明、估值指标）。
+ * 已存在行必须用 UPDATE，避免 upsert 在冲突时把未提交的列覆盖成默认值而清空用户「保存分析」里的 DCF 参数。
+ */
 export async function saveTickerToSupabase(
   symbol: string,
   data: TickerData
@@ -69,8 +78,8 @@ export async function saveTickerToSupabase(
   const sb = getSupabase();
   if (!sb) return false;
 
+  const sym = symbol.toUpperCase();
   const payload = {
-    symbol: symbol.toUpperCase(),
     quote: data.quote,
     fcf_history: data.fcfHistory,
     analyst_growth_rate_5y: data.analystGrowthRate5y ?? null,
@@ -80,10 +89,31 @@ export async function saveTickerToSupabase(
     updated_at: new Date().toISOString(),
   };
 
-  const { error } = await sb.from("ticker_analyses").upsert(payload, {
-    onConflict: "symbol",
+  const { data: existing, error: selectError } = await sb
+    .from("ticker_analyses")
+    .select("symbol")
+    .eq("symbol", sym)
+    .maybeSingle();
+
+  if (selectError) return false;
+
+  if (existing) {
+    const { error } = await sb.from("ticker_analyses").update(payload).eq("symbol", sym);
+    return !error;
+  }
+
+  const { error: insertError } = await sb.from("ticker_analyses").insert({
+    symbol: sym,
+    ...payload,
   });
-  return !error;
+
+  // 并发下可能同时 insert 同一 symbol，回退为只更新市场字段
+  if (insertError?.code === "23505") {
+    const { error } = await sb.from("ticker_analyses").update(payload).eq("symbol", sym);
+    return !error;
+  }
+
+  return !insertError;
 }
 
 export interface SaveAnalysisPayload {
@@ -95,6 +125,7 @@ export interface SaveAnalysisPayload {
   waccSource?: string;
   valuationMetrics?: TickerData["valuationMetrics"];
   growthRate: number;
+  growthRateLate?: number;
   discountRate: number;
   terminalGrowthRate: number;
   projectionYears: number;
@@ -117,6 +148,10 @@ export async function saveAnalysisWithParams(
     wacc_source: payload.waccSource ?? null,
     valuation_metrics: payload.valuationMetrics ?? null,
     growth_rate: payload.growthRate,
+    growth_rate_late:
+      payload.growthRateLate != null && Number.isFinite(payload.growthRateLate)
+        ? payload.growthRateLate
+        : payload.growthRate,
     discount_rate: payload.discountRate,
     terminal_growth_rate: payload.terminalGrowthRate,
     projection_years: payload.projectionYears,

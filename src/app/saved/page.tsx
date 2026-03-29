@@ -114,61 +114,69 @@ export default function SavedPage() {
   );
 
   return (
-    <div className="min-h-screen bg-bloom-bg">
-      <header className="border-b border-bloom-border bg-bloom-surface/80 backdrop-blur">
-        <div className="max-w-5xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-lg font-semibold text-white flex items-center gap-2">
-              <History className="h-5 w-5 text-bloom-accent" />
-              分析历史
-            </h1>
-            <div className="flex items-center gap-4">
-              <Link href="/method" className="text-sm text-bloom-muted hover:text-white transition-colors">
+    <div className="min-h-screen">
+      <header className="app-header-bar sticky top-0 z-40">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-white sm:text-2xl">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-bloom-accent/15 text-bloom-accent ring-1 ring-bloom-accent/20">
+                  <History className="h-5 w-5" />
+                </span>
+                分析历史
+              </h1>
+              <p className="mt-0.5 text-sm text-bloom-muted">已保存的 DCF 分析记录</p>
+            </div>
+            <nav className="flex flex-wrap items-center gap-1">
+              <Link href="/method" className="nav-link">
                 估值方法
               </Link>
-              <Link
-                href="/"
-                className="flex items-center gap-2 text-bloom-muted hover:text-white transition-colors text-sm"
-              >
-                <ArrowLeft className="h-4 w-4" />
+              <Link href="/" className="nav-link inline-flex items-center gap-1.5">
+                <ArrowLeft className="h-4 w-4 opacity-70" />
                 返回首页
               </Link>
-            </div>
+            </nav>
           </div>
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-6">
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
         {loading && (
-          <div className="flex items-center justify-center py-12 text-bloom-muted">
-            <Loader2 className="h-8 w-8 animate-spin mr-2" />
-            加载中…
+          <div className="flex flex-col items-center justify-center gap-3 py-16 text-bloom-muted">
+            <Loader2 className="h-9 w-9 animate-spin text-bloom-accent" />
+            <span className="text-sm font-medium">加载中…</span>
           </div>
         )}
 
         {error && (
-          <div className="flex items-center gap-2 rounded-lg border border-bloom-red/50 bg-bloom-red/10 text-bloom-red px-4 py-3 mb-6">
-            <AlertCircle className="h-5 w-5 shrink-0" />
-            <p>{error}</p>
+          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-bloom-red/30 bg-bloom-red/10 px-4 py-3.5 text-bloom-red shadow-card">
+            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+            <p className="text-sm leading-relaxed">{error}</p>
           </div>
         )}
 
         {!loading && rows.length === 0 && !error && (
-          <div className="text-center py-16 text-bloom-muted">
-            <p>暂无已保存的分析结果。</p>
-            <p className="text-sm mt-2">在首页对股票执行「分析」后，点击「保存分析」即可保存到此。</p>
-            <Link href="/" className="inline-block mt-4 text-bloom-accent hover:underline">
-              去分析 →
+          <div className="app-card mx-auto max-w-md px-8 py-14 text-center">
+            <p className="font-medium text-white">暂无记录</p>
+            <p className="mt-2 text-sm text-bloom-muted leading-relaxed">
+              在首页分析股票后，点击「保存分析」即可保存到此。
+            </p>
+            <Link
+              href="/"
+              className="btn-primary mt-6 inline-flex text-sm"
+            >
+              去分析
             </Link>
           </div>
         )}
 
         {!loading && rows.length > 0 && (
           <div className="space-y-3">
-            <p className="text-bloom-muted text-sm">共 {rows.length} 只股票的分析记录</p>
-            <div className="rounded-xl border border-bloom-border overflow-x-auto -mx-1 px-1">
-              <table className="w-full text-left min-w-[640px] text-xs sm:text-sm">
-                <thead className="bg-bloom-surface text-bloom-muted text-[10px] sm:text-xs uppercase tracking-wider">
+            <p className="text-sm text-bloom-muted">共 <span className="font-mono text-white">{rows.length}</span> 条分析记录</p>
+            <div className="app-card overflow-hidden -mx-1 px-1 sm:mx-0">
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-left text-xs sm:text-sm">
+                <thead className="border-b border-white/[0.06] bg-bloom-bg/30 text-[10px] font-medium uppercase tracking-wider text-bloom-muted sm:text-xs">
                   <tr>
                     <th className="px-2 py-2 sm:px-4 sm:py-3 font-medium w-0"> </th>
                     <th className="px-2 py-2 sm:px-4 sm:py-3 font-medium">代码</th>
@@ -203,11 +211,11 @@ export default function SavedPage() {
                             : "text-bloom-amber";
                     const isUpdating = updating === r.symbol;
                     return (
-                      <tr key={r.symbol} className="border-t border-bloom-border hover:bg-bloom-surface/50">
+                      <tr key={r.symbol} className="border-t border-white/[0.04] transition-colors hover:bg-white/[0.03]">
                         <td className="px-2 py-2 sm:px-4 sm:py-3 align-middle w-0">
                           <Link
                             href={`/?symbol=${encodeURIComponent(r.symbol)}&cacheOnly=1`}
-                            className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] sm:min-h-[40px] sm:min-w-[40px] rounded-lg bg-bloom-accent text-bloom-bg font-medium text-sm hover:opacity-90 active:opacity-80"
+                            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl bg-bloom-accent px-3 text-sm font-semibold text-bloom-bg shadow-glow transition hover:brightness-110 active:scale-[0.98] sm:min-h-[40px] sm:min-w-[40px]"
                           >
                             查看
                           </Link>
@@ -231,7 +239,7 @@ export default function SavedPage() {
                           <button
                             onClick={() => handleUpdate(r.symbol)}
                             disabled={isUpdating}
-                            className="inline-flex items-center justify-center gap-1 min-h-[44px] min-w-[44px] sm:min-h-[40px] sm:min-w-[40px] rounded-lg px-2 sm:px-3 text-xs sm:text-sm font-medium bg-bloom-accent/20 text-bloom-accent hover:bg-bloom-accent/30 disabled:opacity-50 disabled:cursor-not-allowed active:opacity-80"
+                            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1 rounded-xl border border-bloom-accent/25 bg-bloom-accent/10 px-2 text-xs font-medium text-bloom-accent transition hover:bg-bloom-accent/20 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-[40px] sm:min-w-[40px] sm:px-3 sm:text-sm"
                           >
                             {isUpdating ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -246,9 +254,10 @@ export default function SavedPage() {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
-            <p className="text-bloom-muted text-xs mt-2">
-              「更新」会重新从网上抓取该股票最新数据并覆盖数据库中的记录。估值需点击「保存分析」后才会显示。
+            <p className="text-xs text-bloom-muted mt-3 leading-relaxed">
+              「更新」会重新抓取行情与财务数据并写库，不会改动你在首页「保存分析」里存下的 DCF 参数与内在价值。表格中的估值需先在首页保存过才会显示。
             </p>
           </div>
         )}

@@ -3,19 +3,46 @@
 @tailwind utilities;
 
 :root {
-  --bloom-bg: #0d1117;
-  --bloom-surface: #161b22;
-  --bloom-border: #30363d;
-  --bloom-muted: #8b949e;
-  --bloom-accent: #58a6ff;
-  --bloom-green: #3fb950;
-  --bloom-red: #f85149;
-  --bloom-amber: #d29922;
+  --bloom-bg: #07080d;
+  --bloom-surface: #0f1118;
+  --bloom-border: rgba(255, 255, 255, 0.08);
+  --bloom-muted: #94a3b8;
+  --bloom-accent: #818cf8;
+  --bloom-green: #34d399;
+  --bloom-red: #f87171;
+  --bloom-amber: #fbbf24;
 }
 
 body {
-  @apply bg-bloom-bg text-white antialiased;
+  @apply bg-bloom-bg text-white antialiased min-h-screen;
   font-feature-settings: "rlig" 1, "calt" 1;
+  background-image: radial-gradient(
+      ellipse 100% 80% at 50% -30%,
+      rgba(99, 102, 241, 0.12),
+      transparent 55%
+    ),
+    radial-gradient(ellipse 60% 50% at 100% 10%, rgba(14, 165, 233, 0.06), transparent 50%);
+  background-attachment: fixed;
+}
+
+::selection {
+  background: rgba(129, 140, 248, 0.35);
+  color: #fff;
+}
+
+@layer components {
+  .app-card {
+    @apply rounded-2xl border border-white/[0.06] bg-bloom-surface/90 backdrop-blur-md shadow-card;
+  }
+  .app-header-bar {
+    @apply border-b border-white/[0.06] bg-bloom-surface/70 backdrop-blur-xl shadow-[0_1px_0_0_rgba(255,255,255,0.04)];
+  }
+  .nav-link {
+    @apply text-sm font-medium text-bloom-muted rounded-lg px-3 py-2 transition-colors hover:bg-white/[0.06] hover:text-white;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-xl bg-bloom-accent px-5 py-2.5 font-medium text-bloom-bg shadow-glow transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none;
+  }
 }
 
 /* Custom scrollbar for dark theme */
@@ -25,16 +52,16 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bloom-surface);
+  background: rgba(15, 17, 24, 0.8);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--bloom-border);
-  border-radius: 4px;
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 6px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--bloom-muted);
+  background: rgba(148, 163, 184, 0.4);
 }
 
 /* Range slider thumb for dark theme */

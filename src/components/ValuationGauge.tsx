@@ -14,9 +14,7 @@ function formatPrice(n: number, currency?: string): string {
 export function ValuationGauge({ currentPrice, intrinsicValue, currency = "USD" }: ValuationGaugeProps) {
   if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
     return (
-      <div className="rounded-xl border border-bloom-border bg-bloom-surface p-5 text-center text-bloom-muted">
-        暂无价格数据
-      </div>
+      <div className="app-card p-6 text-center text-sm text-bloom-muted">暂无价格数据</div>
     );
   }
 
@@ -29,11 +27,11 @@ export function ValuationGauge({ currentPrice, intrinsicValue, currency = "USD" 
   const gaugePct = Math.max(0, Math.min(100, 50 + pct * 5));
 
   return (
-    <div className="rounded-xl border border-bloom-border bg-bloom-surface p-5">
-      <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-4">估值</h3>
+    <div className="app-card p-6">
+      <h3 className="mb-4 text-sm font-semibold tracking-wide text-white">估值</h3>
       <div className="flex flex-col sm:flex-row sm:items-center gap-4">
         <div className="flex-1">
-          <div className="h-4 rounded-full bg-bloom-border overflow-hidden">
+          <div className="h-3 overflow-hidden rounded-full bg-white/[0.08] ring-1 ring-white/[0.06]">
             <div
               className="h-full rounded-full transition-all duration-300"
               style={{
@@ -59,7 +57,7 @@ export function ValuationGauge({ currentPrice, intrinsicValue, currency = "USD" 
           </p>
         </div>
       </div>
-      <div className="mt-4 pt-4 border-t border-bloom-border flex justify-between text-sm">
+      <div className="mt-4 flex justify-between border-t border-white/[0.06] pt-4 text-sm">
         <span className="text-bloom-muted">当前股价</span>
         <span className="font-mono text-white">{formatPrice(currentPrice, currency)}</span>
       </div>

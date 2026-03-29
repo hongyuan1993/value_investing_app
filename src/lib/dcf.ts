@@ -6,13 +6,21 @@
  * - All monetary inputs (baseFcf) and outputs (enterpriseValue, intrinsicValuePerShare) are in full dollars.
  */
 
+/** 前 5 个预测年度使用 growthRate；第 6 年及以后使用 growthRateLate（若未传则与 growthRate 相同） */
+export const DCF_FIRST_PHASE_YEARS = 5;
+
 export interface DCFParams {
   /** Latest free cash flow (base year), in dollars */
   baseFcf: number;
   /** Number of years to project explicitly */
   projectionYears: number;
-  /** Annual FCF growth rate (e.g. 0.10 = 10%) */
+  /** 前 5 年 FCF 年增长率（e.g. 0.10 = 10%）；若预测年数 ≤5，则全程使用该增长率 */
   growthRate: number;
+  /**
+   * 第 6 年及以后的 FCF 年增长率；默认与 growthRate 相同。
+   * 仅当 projectionYears > 5 时参与计算。
+   */
+  growthRateLate?: number;
   /** Discount rate / WACC (e.g. 0.10 = 10%) */
   discountRate: number;
   /** Terminal perpetual growth rate (e.g. 0.025 = 2.5%) */
@@ -41,17 +49,21 @@ export function computeDCF(params: DCFParams): DCFResult {
     baseFcf,
     projectionYears,
     growthRate,
+    growthRateLate,
     discountRate,
     terminalGrowthRate,
     sharesOutstanding,
   } = params;
+
+  const late = growthRateLate ?? growthRate;
 
   const projectedFcfByYear: { year: number; fcf: number; pv: number }[] = [];
   let pvProjectedFcf = 0;
   let fcfPrev = baseFcf;
 
   for (let y = 1; y <= projectionYears; y++) {
-    const fcf = fcfPrev * (1 + growthRate);
+    const g = y <= DCF_FIRST_PHASE_YEARS ? growthRate : late;
+    const fcf = fcfPrev * (1 + g);
     fcfPrev = fcf;
     const pv = fcf / Math.pow(1 + discountRate, y);
     pvProjectedFcf += pv;
