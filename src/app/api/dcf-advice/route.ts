@@ -150,7 +150,7 @@ export async function POST(request: Request) {
     });
 
     const genAI = new GoogleGenerativeAI(key);
-    const modelId = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+    const modelId = process.env.GEMINI_MODEL ?? "gemini-3-flash-preview";
     const model = genAI.getGenerativeModel({ model: modelId });
 
     const result = await model.generateContent(SYSTEM_PROMPT + "\n\n" + context);

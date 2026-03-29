@@ -54,6 +54,7 @@ DCF 参数可基于 Gemini 大模型给出建议。
 
 1. 在 [Google AI Studio](https://aistudio.google.com/app/apikey) 申请 API Key。
 2. 在 `.env.local` 中添加：`GEMINI_API_KEY=你的key`
+3. 可选：`GEMINI_MODEL=模型ID`，默认使用 **Gemini 3 Flash**（`gemini-3-flash-preview`）。需其它型号时请查阅 [Gemini 模型列表](https://ai.google.dev/gemini-api/docs/models)。
 
 未配置时，「获取专家意见」按钮不可用或会提示配置。
 
